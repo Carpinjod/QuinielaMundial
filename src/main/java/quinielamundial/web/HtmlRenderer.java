@@ -187,11 +187,7 @@ public class HtmlRenderer {
                     .collect(Collectors.toList());
                 if (jMatches.isEmpty()) continue;
 
-                var pending = 0;
-                for (var m : jMatches) {
-                    if (member != null && !m.finished() && !m.isStarted() && !member.predictions().containsKey(m.id()))
-                        pending++;
-                }
+                var pending = member == null ? 0 : (int) jMatches.stream().filter(m -> !m.isStarted()).count();
                 var finished = (int) jMatches.stream().filter(Match::finished).count();
 
                 accordion.append("<details class='jor-section'")
@@ -209,7 +205,7 @@ public class HtmlRenderer {
                     .append("<div class='jor-matches'>");
 
                 for (var m : jMatches) {
-                    var isPending = member != null && !m.finished() && !m.isStarted() && !member.predictions().containsKey(m.id());
+                    var isPending = member != null && !m.isStarted();
                     accordion.append("<div class='match-wrapper' data-pending=\"").append(isPending).append("\">")
                         .append(matchCard(group, m, member, tournamentStarted, m.jornada(), isCreator))
                         .append("</div>");
