@@ -100,6 +100,9 @@ public class Group implements Serializable {
         var match = matchById(matchId);
         if (match.jornada() != jornada) throw new IllegalArgumentException("La jornada no coincide.");
         if (match.isStarted()) throw new IllegalStateException("El Partido Estrella ya quedó bloqueado.");
+        // Once ANY match in the jornada has started, the star is locked for that jornada
+        var jornadaStarted = matches.stream().anyMatch(m -> m.jornada() == jornada && m.isStarted());
+        if (jornadaStarted) throw new IllegalStateException("La jornada ya comenzó, no puedes cambiar el Partido Estrella.");
         var previousMatchId = member.starByJornada().get(jornada);
         if (previousMatchId != null && member.predictions().containsKey(previousMatchId)) {
             var previous = member.predictions().get(previousMatchId);

@@ -154,37 +154,70 @@ public class HtmlRenderer {
             + "<div class='user-area'>" + userSelector + "</div>"
             + "</div>";
 
-        // ── Jornada tabs + Eliminatorias tab ──
-        var totalJornadas = group.matches().stream().mapToInt(Match::jornada).max().orElse(3);
-        var current = currentJornada(group);
+        // ── View toggle: Fase de grupos / Eliminatorias ──
         var isKnockoutView = selectedJornada == 0;
-        var tabs = new StringBuilder("<div class='tabs'>");
-        for (int j = 1; j <= totalJornadas; j++) {
-            var active = (!isKnockoutView && j == selectedJornada) ? " active" : "";
-            var isCurrent = j == current ? " tab-current" : "";
-            var label = "Jornada " + j + (j == current ? " 🎯" : "");
-            var qs = "?jornada=" + j;
-            if (member != null) qs += "&token=" + member.token();
-            tabs.append("<a href='/groups/").append(escape(group.code())).append(qs).append("' class='tab").append(active).append(isCurrent).append("'>").append(label).append("</a>");
-        }
-        // Eliminatorias tab
-        var koActive = isKnockoutView ? " active" : "";
-        var koQs = "?jornada=0";
-        if (member != null) koQs += "&token=" + member.token();
-        tabs.append("<a href='/groups/").append(escape(group.code())).append(koQs).append("' class='tab'").append(koActive).append("'>🏆 Eliminatorias</a>");
+        var tokenQs = member != null ? "&token=" + member.token() : "";
+        var viewToggle = "<div class='view-toggle'>"
+            + "<a href='/groups/" + escape(group.code()) + "' class='view-btn" + (isKnockoutView ? "" : " active") + "'>📋 Fase de grupos</a>"
+            + "<a href='/groups/" + escape(group.code()) + "?jornada=0" + tokenQs + "' class='view-btn" + (isKnockoutView ? " active" : "") + "'>🏆 Eliminatorias</a>"
+            + "</div>";
 
-        tabs.append("</div>");
-
-        // ── Content: Group matches or Bracket view ──
+        // ── Content: Accordion (group stage) or Bracket (knockout) ──
         String mainContent;
         if (isKnockoutView) {
             mainContent = bracketView(group, member, isCreator, tournamentStarted);
         } else {
-            mainContent = group.matches().stream()
-                .filter(m -> m.jornada() == selectedJornada)
-                .map(m -> matchCard(group, m, member, tournamentStarted, selectedJornada, isCreator))
-                .collect(Collectors.joining(""));
-            mainContent = "<div class='matches'>" + mainContent + "</div>";
+            var totalJornadas = group.matches().stream().mapToInt(Match::jornada).max().orElse(3);
+            var currentJor = currentJornada(group);
+            var expandedJornada = selectedJornada > 0 ? selectedJornada : currentJor;
+
+            // Filter bar
+            var filterBar = "<div class='filter-bar'>"
+                + "<label class='filter-pending'><input type='checkbox' id='filterPending' onchange='togglePendingFilter()'>"
+                + "<span>Solo pendientes</span></label>"
+                + "<span class='filter-info' id='filterInfo'></span>"
+                + "</div>";
+
+            var accordion = new StringBuilder();
+            for (int j = 1; j <= totalJornadas; j++) {
+                var jornadaIdx = j;
+                var jMatches = group.matches().stream()
+                    .filter(m -> m.jornada() == jornadaIdx)
+                    .sorted(Comparator.comparing(Match::kickoff))
+                    .collect(Collectors.toList());
+                if (jMatches.isEmpty()) continue;
+
+                var pending = 0;
+                for (var m : jMatches) {
+                    if (member != null && !m.finished() && !m.isStarted() && !member.predictions().containsKey(m.id()))
+                        pending++;
+                }
+                var finished = (int) jMatches.stream().filter(Match::finished).count();
+
+                accordion.append("<details class='jor-section'")
+                    .append(j == expandedJornada ? " open" : "")
+                    .append(">")
+                    .append("<summary class='jor-header")
+                    .append(j == currentJor ? " jor-current" : "")
+                    .append("'><span class='jor-title'><span class='jor-num'>Jornada ").append(j).append("</span>")
+                    .append(j == currentJor ? " <span class='jor-now'>En vivo</span>" : "")
+                    .append("</span><span class='jor-meta'>")
+                    .append(jMatches.size()).append(" partidos")
+                    .append(pending > 0 ? " · <span class='jor-pending'>" + pending + " pendientes</span>" : "")
+                    .append(finished > 0 ? " · " + finished + " finalizados" : "")
+                    .append("</span></summary>")
+                    .append("<div class='jor-matches'>");
+
+                for (var m : jMatches) {
+                    var isPending = member != null && !m.finished() && !m.isStarted() && !member.predictions().containsKey(m.id());
+                    accordion.append("<div class='match-wrapper' data-pending=\"").append(isPending).append("\">")
+                        .append(matchCard(group, m, member, tournamentStarted, m.jornada(), isCreator))
+                        .append("</div>");
+                }
+                accordion.append("</div></details>");
+            }
+
+            mainContent = filterBar + "<div class='jor-accordion'>" + accordion.toString() + "</div>";
         }
 
         // ── Sidebar content (leaderboard + champion sections) ──
@@ -214,7 +247,7 @@ public class HtmlRenderer {
             "<a href='/' class='back-link'>← Inicio</a>"
             + (success == null ? "" : "<div class='toast success'>" + escape(success) + "</div>")
             + topBar
-            + tabs.toString()
+            + viewToggle
             + "<div class='group-layout'>"
             + "<div class='col-main'>" + mainContent + "</div>"
             + "<aside class='col-side'>" + sideContent + "</aside>"
@@ -232,6 +265,8 @@ public class HtmlRenderer {
         var finished = match.finished();
         var memberPrediction = member == null ? null : member.predictions().get(match.id());
         var starSelected = member != null && member.starByJornada().getOrDefault(match.jornada(), -1) == match.id();
+        var jornadaIdx = match.jornada();
+        var jornadaLocked = !match.knockout() && group.matches().stream().anyMatch(m -> m.jornada() == jornadaIdx && m.isStarted());
 
         // ═══ Grid columns: time | group | home | score/form | away | badge ═══
 
@@ -270,7 +305,7 @@ public class HtmlRenderer {
         // 6. Status / result badge (rightmost column)
         var statusHtml = "";
         if (finished) {
-            statusHtml = "<div>" + predictionResultBadge(match, memberPrediction) + "</div>";
+            statusHtml = "<div>" + predictionResultBadge(match, memberPrediction, starSelected) + "</div>";
         } else if (started) {
             statusHtml = "<div class='match-status playing'>🔴</div>";
         }
@@ -282,7 +317,7 @@ public class HtmlRenderer {
 
         // ═══ Extras row (star, admin result, predictions toggle) ═══
         var extras = new StringBuilder();
-        if (member != null && !started) {
+        if (member != null && !jornadaLocked) {
             var label = starSelected ? "⭐ Quitar estrella" : "⭐ Marcar estrella";
             extras.append("<form method='post' action='/groups/").append(escape(group.code())).append("/star' class='star-form'>")
                 .append(hiddenToken(member.token())).append(hiddenJornada(selectedJornada))
@@ -443,7 +478,7 @@ public class HtmlRenderer {
         if (!teamsKnown) {
             statusHtml = "<div class='match-status locked'>🔒</div>";
         } else if (finished) {
-            statusHtml = "<div>" + predictionResultBadge(match, memberPrediction) + "</div>";
+            statusHtml = "<div>" + predictionResultBadge(match, memberPrediction, false) + "</div>";
         } else if (started) {
             statusHtml = "<div class='match-status playing'>🔴</div>";
         }
@@ -741,17 +776,27 @@ public class HtmlRenderer {
     }
 
     /** Build a coloured result indicator for a finished match + user prediction.
-     *  Returns e.g. "🎯 +3" (exact), "✅ +1" (winner), "❌ +0" (wrong), or "" (no prediction). */
-    private String predictionResultBadge(Match match, quinielamundial.domain.Prediction prediction) {
+     *  Shows actual points earned, including the star-match multiplier (×2 for group stage).
+     *  Returns e.g. "🎯 +6 ⭐" (exact + star), "🎯 +3" (exact), "✅ +2 ⭐" (winner + star),
+     *  "✅ +1" (winner), "❌ +0" (wrong), or "—" (no prediction). */
+    private String predictionResultBadge(Match match, quinielamundial.domain.Prediction prediction, boolean starMatch) {
         if (!match.finished()) return "";
         if (prediction == null) return "<span class='result-dot dot-none'>—</span>";
         var actual = match.result();
         if (actual == null) return "<span class='result-dot dot-none'>—</span>";
-        if (prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals())
-            return "<span class='result-dot dot-exact' title='Exacto'>🎯 +3</span>";
-        if (prediction.outcome().equals(actual))
-            return "<span class='result-dot dot-winner' title='Ganador'>✅ +1</span>";
-        return "<span class='result-dot dot-wrong' title='Fallado'>❌ +0</span>";
+        String icon, label;
+        int base;
+        if (prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals()) {
+            icon = "🎯"; label = "Exacto"; base = 3;
+        } else if (prediction.outcome().equals(actual)) {
+            icon = "✅"; label = "Ganador"; base = 1;
+        } else {
+            icon = "❌"; label = "Fallado"; base = 0;
+        }
+        var pts = starMatch ? base * 2 : base;
+        var starIcon = starMatch && base > 0 ? " ⭐" : "";
+        var titleAttr = label + (starMatch && base > 0 ? " ⭐" : "");
+        return "<span class='result-dot dot-" + (base == 3 ? "exact" : base == 1 ? "winner" : "wrong") + "' title='" + titleAttr + "'>" + icon + " +" + pts + starIcon + "</span>";
     }
 
     /** Find the "current" jornada — the latest one with any match in progress (started but not finished). */
@@ -1183,6 +1228,40 @@ public class HtmlRenderer {
             + ".home-hero h1{font-size:clamp(48px,2.8vw,72px)}}"
 
 
+            // ═══════════════════════════════════════
+            //  VIEW TOGGLE + ACCORDION + FILTER
+            // ═══════════════════════════════════════
+            + ".view-toggle{display:flex;gap:6px;margin-bottom:clamp(16px,2.5vw,28px)}"
+            + ".view-btn{padding:clamp(8px,1vw,12px) clamp(14px,1.6vw,22px);border-radius:100px;background:var(--surface);border:1px solid var(--border);color:var(--text-sec);font-size:clamp(12px,1.1vw,14px);font-weight:600;transition:all .2s ease;text-decoration:none;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center}"
+            + ".view-btn:hover{background:var(--surface-hover);border-color:var(--text-dim);color:var(--text);text-decoration:none}"
+            + ".view-btn.active{background:var(--gradient);border:none;color:#fff}"
+
+            + ".jor-accordion{display:flex;flex-direction:column;gap:clamp(8px,1vw,12px)}"
+            + ".jor-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:border-color .2s ease;box-shadow:var(--shadow-sm)}"
+            + ".jor-section[open]{border-color:var(--border-light)}"
+            + ".jor-header{padding:clamp(12px,1.3vw,18px) clamp(16px,2vw,24px);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:clamp(8px,1vw,14px);flex-wrap:wrap;user-select:none;list-style:none;transition:background .15s ease;-webkit-tap-highlight-color:transparent}"
+            + ".jor-header::-webkit-details-marker,.jor-header::marker{display:none;content:''}"
+            + ".jor-header:hover{background:var(--surface-hover)}"
+            + ".jor-header:active{background:var(--surface2)}"
+            + ".jor-current{background:var(--pri-light)}"
+            + ".jor-current:hover{background:rgba(0,212,255,.18)}"
+            + ".jor-title{display:flex;align-items:center;gap:clamp(6px,.6vw,10px);min-width:0}"
+            + ".jor-num{font-size:clamp(15px,1.4vw,19px);font-weight:700;color:var(--text);letter-spacing:-.02em}"
+            + ".jor-now{font-size:clamp(9px,.8vw,11px);font-weight:700;color:var(--red);padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.1);animation:pulse 1.5s ease-in-out infinite;white-space:nowrap}"
+            + ".jor-meta{font-size:clamp(10px,.9vw,12px);color:var(--text-sec);white-space:nowrap}"
+            + ".jor-pending{color:var(--pri);font-weight:600}"
+            + ".jor-matches{padding:clamp(4px,.4vw,8px) clamp(8px,1vw,14px) clamp(8px,1vw,14px)}"
+            + ".jor-matches .match-row{margin:0 0 clamp(6px,.7vw,10px)}"
+            + ".jor-matches .match-row:last-child{margin-bottom:0}"
+
+            + ".filter-bar{display:flex;align-items:center;gap:clamp(10px,1.2vw,18px);margin-bottom:clamp(10px,1.2vw,16px);flex-wrap:wrap}"
+            + ".filter-pending{display:inline-flex;align-items:center;gap:clamp(6px,.6vw,10px);cursor:pointer;font-size:clamp(12px,1.1vw,14px);color:var(--text-sec);font-weight:500;padding:clamp(6px,.6vw,10px) clamp(12px,1.4vw,18px);border-radius:100px;background:var(--surface);border:1px solid var(--border);transition:all .2s ease;min-height:44px;user-select:none;-webkit-tap-highlight-color:transparent}"
+            + ".filter-pending:hover{border-color:var(--border-light);color:var(--text)}"
+            + ".filter-pending input[type=checkbox]{width:18px;height:18px;accent-color:var(--pri);cursor:pointer;margin:0;min-height:auto;flex-shrink:0}"
+            + ".filter-info{font-size:clamp(11px,1vw,13px);color:var(--text-dim);font-weight:500}"
+
+            + ".match-wrapper{transition:opacity .2s ease}"
+
             + "</style>"
             + "</head><body>"
             // ── Global header ──
@@ -1200,6 +1279,7 @@ public class HtmlRenderer {
             + "function confirmAction(msg){return confirm(msg)}"
             + "function toggleDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(!p||!o)return;var open=p.classList.toggle('open');o.classList.toggle('open',open);document.body.style.overflow=open?'hidden':''}"
             + "function closeDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(p)p.classList.remove('open');if(o)o.classList.remove('open');document.body.style.overflow=''}"
+            + "function togglePendingFilter(){var cb=document.getElementById('filterPending');if(!cb)return;var on=cb.checked;var t=0;document.querySelectorAll('.match-wrapper').forEach(function(e){var p=e.getAttribute('data-pending')==='true';e.style.display=on&&!p?'none':'';if(p)t++});var i=document.getElementById('filterInfo');if(i)i.textContent=on?'Mostrando '+t+' pendientes':''}"
             + "document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer()})"
             + "</script>"
             + "</body></html>";
