@@ -88,9 +88,9 @@ public class Group implements Serializable {
         changed();
     }
 
-    public void setChampionBet(String token, String team, boolean tournamentStarted) {
+    public void setChampionBet(String token, String team) {
         var member = requireByToken(token);
-        if (tournamentStarted) throw new IllegalStateException("El torneo ya comenzó.");
+        if (groupStageFinished()) throw new IllegalStateException("La fase de grupos ya terminó, no puedes cambiar la apuesta al campeón.");
         member.championBet(team);
         changed();
     }

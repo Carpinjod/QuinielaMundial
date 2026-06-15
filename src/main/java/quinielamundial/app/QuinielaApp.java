@@ -211,7 +211,7 @@ public class QuinielaApp {
                 if ("POST".equals(method) && tail.equals(code + "/champion")) {
                     var form = FormData.read(exchange);
                     var token = form.required("token");
-                    group.setChampionBet(token, form.value("team", "").trim(), service.tournamentStarted());
+                    group.setChampionBet(token, form.value("team", "").trim());
                     var j = form.value("jornada", "1");
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Apuesta+al+campe%C3%B3n+guardada");
                     return;

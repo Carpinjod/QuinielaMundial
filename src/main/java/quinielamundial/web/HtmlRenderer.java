@@ -47,7 +47,7 @@ public class HtmlRenderer {
         return page("Quiniela Mundial 2026",
             (error == null ? "" : "<div class='toast error'>" + escape(error) + "</div>")
             + (success == null ? "" : "<div class='toast success'>" + escape(success) + "</div>")
-            + "<div class='home-hero'><h1>Tu quiniela del Mundial 2026</h1><p>Crea un grupo con amigos, pronostica los <strong>72 partidos</strong> de la fase de grupos y compite por la gloria.</p></div>"
+            + "<div class='home-hero'><h1>Tu quiniela del Mundial 2026</h1><p>Crea un grupo con amigos, pronostica los resultados del torneo más prestigioso del mundo y compite por la gloria.</p></div>"
             + myGroupsHtml
             + "<div class='home-cards'>"
             + "<div class='card'><h2>➕ Crear grupo</h2><form method='post' action='/groups/create'><input name='groupName' placeholder='Nombre del grupo' required><input name='creator'" + nameAttr + "><button type='submit'>Crear grupo</button></form></div>"
@@ -560,7 +560,7 @@ public class HtmlRenderer {
 
     // ── Forms ──
     private String championForm(Group group, Member member, List<String> candidates, boolean tournamentStarted, int selectedJornada, String championTeam) {
-        var disabled = tournamentStarted ? "disabled" : "";
+        var disabled = group.groupStageFinished() ? "disabled" : "";
         var current = member.championBet() == null ? "" : member.championBet();
         var options = candidates.stream().map(team -> "<option value='" + escape(team) + "' " + (team.equals(current) ? "selected" : "") + ">" + escape(team) + "</option>").collect(Collectors.joining(""));
         return "<div class='card'><h2>🏆 Tu apuesta al campeón</h2><p class='muted'>Campeón actual: <b>" + escape(championTeam) + "</b></p>"

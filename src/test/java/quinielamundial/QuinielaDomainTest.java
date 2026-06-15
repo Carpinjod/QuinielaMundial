@@ -38,7 +38,7 @@ class QuinielaDomainTest {
         group.registerResult(m3.id(), 2, 1); // actual 2-1 (home win) → wrong
 
         // Ana: exact hit + star + champion
-        group.setChampionBet(ana.token(), "Argentina", false);
+        group.setChampionBet(ana.token(), "Argentina");
         var aEntry = group.leaderboard("Argentina").stream()
             .filter(e -> e.member().name().equals("Ana")).findFirst().get();
         assertEquals(16, aEntry.score().totalPoints()); // 3×2 (star) + 10 (champion)
@@ -98,7 +98,8 @@ class QuinielaDomainTest {
         group.registerResult(match.id(), 1, 0); // home wins
 
         assertThrows(IllegalStateException.class, () -> group.submitPrediction(luis.token(), match.id(), 1, 2)); // match finished
-        assertThrows(IllegalStateException.class, () -> group.setChampionBet(luis.token(), "Brasil", true));
+        // Champion bet is still open after matches finish (only closes when ALL 72 group matches finish)
+        group.setChampionBet(luis.token(), "Brasil");
     }
 
     @Test
