@@ -67,6 +67,15 @@ public class AuthService {
         return true;
     }
 
+    /** Admin-resets a user's password to a random string. Returns the new plaintext password, or null if user doesn't exist. */
+    public String adminResetPassword(String username) {
+        if (!users.containsKey(username)) return null;
+        var newPassword = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        users.put(username, hash(newPassword));
+        save();
+        return newPassword;
+    }
+
     // ── Internal ──
 
     private static String hash(String password) {

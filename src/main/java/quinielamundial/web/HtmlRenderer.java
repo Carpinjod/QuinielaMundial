@@ -221,7 +221,8 @@ public class HtmlRenderer {
         var championSection = member == null ? ""
             : championForm(group, member, candidates, tournamentStarted, selectedJornada, championTeam);
         var championAdmin = isCreator ? championResultForm(group.code(), candidates, selectedJornada, member.token()) : "";
-        var sideContent = leaderboard + championSection + championAdmin;
+        var adminReset = isCreator ? adminResetSection(group, member, selectedJornada) : "";
+        var sideContent = leaderboard + championSection + championAdmin + adminReset;
 
         // ── Drawer (mobile) + FAB ──
         var drawerHtml = "";
@@ -591,6 +592,24 @@ public class HtmlRenderer {
             + hiddenToken(token) + hiddenJornada(selectedJornada)
             + "<button type='submit'>Actualizar</button>"
             + "</form></div>";
+    }
+
+    public String adminResetSection(Group group, Member admin, int selectedJornada) {
+        var members = group.members().values().stream()
+            .filter(m -> !m.name().equals(admin.name()))
+            .map(m -> "<li style='display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)'>"
+                + "<span>" + escape(m.name()) + "</span>"
+                + "<form method='post' action='/groups/" + escape(group.code()) + "/admin/reset-password' style='display:inline'>"
+                + "<input type='hidden' name='token' value='" + escape(admin.token()) + "'>"
+                + "<input type='hidden' name='username' value='" + escape(m.name()) + "'>"
+                + "<input type='hidden' name='jornada' value='" + selectedJornada + "'>"
+                + "<button type='submit' class='btn-admin' style='margin:0'>Resetear clave</button>"
+                + "</form>"
+                + "</li>")
+            .collect(Collectors.joining());
+        if (members.isEmpty()) return "";
+        return "<div class='card'><h2>🔑 Administrar contraseñas</h2>"
+            + "<ul style='list-style:none;padding:0;margin:0'>" + members + "</ul></div>";
     }
 
     // ── Leaderboard ──

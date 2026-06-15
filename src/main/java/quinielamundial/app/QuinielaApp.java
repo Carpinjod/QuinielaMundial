@@ -15,6 +15,7 @@ import quinielamundial.web.HtmlRenderer;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Optional;
@@ -260,6 +261,30 @@ public class QuinielaApp {
                     store.save(service.groups(), service.tournamentChampion());
                     var j = form.value("jornada", "1");
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Campe%C3%B3n+actualizado");
+                    return;
+                }
+
+                if ("POST".equals(method) && tail.equals(code + "/admin/reset-password")) {
+                    var form = FormData.read(exchange);
+                    var token = form.required("token");
+                    var member = group.requireByToken(token);
+                    if (!member.name().equals(group.creator().name())) {
+                        render(exchange, renderer.errorPage("Acceso denegado", "Solo el creador del grupo puede resetear contraseñas."));
+                        return;
+                    }
+                    var username = form.value("username", "").trim();
+                    if (username.isBlank()) {
+                        render(exchange, renderer.errorPage("Error", "Falta el nombre de usuario."));
+                        return;
+                    }
+                    var newPassword = auth.adminResetPassword(username);
+                    if (newPassword == null) {
+                        render(exchange, renderer.errorPage("Error", "El usuario '" + username + "' no tiene una cuenta registrada en el sistema de autenticación."));
+                        return;
+                    }
+                    var j = form.value("jornada", "1");
+                    redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j
+                        + "&success=Contrase%C3%B1a+de+" + URLEncoder.encode(username, StandardCharsets.UTF_8) + "+reseteada:+nueva+clave+es+" + newPassword);
                     return;
                 }
             }
