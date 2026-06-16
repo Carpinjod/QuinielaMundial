@@ -173,7 +173,7 @@ public class HtmlRenderer {
 
             // Filter bar
             var filterBar = "<div class='filter-bar'>"
-                + "<label class='filter-pending'><input type='checkbox' id='filterPending' onchange='togglePendingFilter()'>"
+                + "<label class='filter-pending'><input type='checkbox' id='filterPending' onclick='togglePendingFilter()'>"
                 + "<span>Solo pendientes</span></label>"
                 + "<span class='filter-info' id='filterInfo'></span>"
                 + "</div>";
@@ -1321,7 +1321,7 @@ public class HtmlRenderer {
             + "function toggleDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(!p||!o)return;var open=p.classList.toggle('open');o.classList.toggle('open',open);document.body.style.overflow=open?'hidden':''}"
             + "function closeDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(p)p.classList.remove('open');if(o)o.classList.remove('open');document.body.style.overflow=''}"
             + "function togglePendingFilter(){var cb=document.getElementById('filterPending');if(!cb)return;var on=cb.checked;var t=0;document.querySelectorAll('.match-wrapper').forEach(function(e){var a=e.getAttribute('data-active')==='true';e.style.display=on&&!a?'none':'';if(a)t++});var i=document.getElementById('filterInfo');if(i)i.textContent=on?'Mostrando '+t+' sin finalizar':''}"
-            + "function liveScores(){var gc=window.location.pathname.split('/')[2];if(!gc)return;fetch('/groups/'+gc+'/api/scores').then(function(r){return r.json()}).then(function(d){d.forEach(function(m){var c=document.querySelector('[data-match-id=\"'+m.id+'\"]');if(!c)return;var s=c.querySelector('.score-display,.pred-display');if(s)s.textContent=m.homeGoals+'\u2013'+m.awayGoals;if(m.finished){var st=c.querySelector('.match-status');if(st){st.innerHTML='\u2705';st.className='match-status'}var pl=c.querySelector('.playing');if(pl)pl.classList.remove('playing')}})})['catch'](function(){})}if(document.querySelector('[data-match-id]'))setInterval(liveScores,15000)"
+            + "function liveScores(){var gc=window.location.pathname.split('/')[2];if(!gc)return;try{fetch('/groups/'+gc+'/api/scores').then(function(r){return r.json()}).then(function(d){d.forEach(function(m){var c=document.querySelector('[data-match-id=\"'+m.id+'\"]');if(!c)return;var s=c.querySelector('.score-display,.pred-display');if(s)s.textContent=m.homeGoals+'\u2013'+m.awayGoals;if(m.finished){var st=c.querySelector('.match-status');if(st){st.innerHTML='\u2705';st.className='match-status'}var pl=c.querySelector('.playing');if(pl)pl.classList.remove('playing')}})})['catch'](function(e){})}catch(e){}}if(document.querySelector('[data-match-id]'))setInterval(liveScores,15000);"
             + "document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer()})"
             + "</script>"
             + "</body></html>";
