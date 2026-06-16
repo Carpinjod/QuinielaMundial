@@ -154,17 +154,23 @@ public class HtmlRenderer {
             + "<div class='user-area'>" + userSelector + "</div>"
             + "</div>";
 
-        // ── View toggle: Fase de grupos / Eliminatorias ──
+        // ── View toggle: Fase de grupos / Pendientes / Eliminatorias ──
         var isKnockoutView = selectedJornada == 0;
+        var isPendingView = selectedJornada == -1;
         var tokenQs = member != null ? "&token=" + member.token() : "";
+        var pendingBtn = member == null ? "" : "<a href='/groups/" + escape(group.code()) + "?jornada=-1" + tokenQs + "' class='view-btn" + (isPendingView ? " active" : "") + "'>⏳ Pendientes</a>";
         var viewToggle = "<div class='view-toggle'>"
-            + "<a href='/groups/" + escape(group.code()) + "' class='view-btn" + (isKnockoutView ? "" : " active") + "'>📋 Fase de grupos</a>"
+            + "<a href='/groups/" + escape(group.code()) + "' class='view-btn" + (!isKnockoutView && !isPendingView ? " active" : "") + "'>📋 Fase de grupos</a>"
+            + pendingBtn
             + "<a href='/groups/" + escape(group.code()) + "?jornada=0" + tokenQs + "' class='view-btn" + (isKnockoutView ? " active" : "") + "'>🏆 Eliminatorias</a>"
             + "</div>";
 
-        // ── Content: Accordion (group stage) or Bracket (knockout) ──
+        // ── Content: Pendientes / Accordion / Bracket ──
         String mainContent;
-        if (isKnockoutView) {
+        if (isPendingView) {
+            mainContent = member == null ? "<div class='card'><p>Inicia sesión para ver tus pendientes.</p></div>"
+                : pendingView(group, member, isCreator, tournamentStarted);
+        } else if (isKnockoutView) {
             mainContent = bracketView(group, member, isCreator, tournamentStarted);
         } else {
             var totalJornadas = group.matches().stream().mapToInt(Match::jornada).max().orElse(3);
@@ -342,7 +348,7 @@ public class HtmlRenderer {
         var extrasStr = extras.toString();
         var extrasHtml = extrasStr.isEmpty() ? "" : "<div class='match-row-extras'>" + extrasStr + "</div>";
 
-        return "<article class='match-row'>" + mainRow + extrasHtml + "</article>";
+        return "<article class='match-row' data-match-id='" + match.id() + "'>" + mainRow + extrasHtml + "</article>";
     }
 
     // ── Score prediction form (compact, for match-row) ──
@@ -417,6 +423,39 @@ public class HtmlRenderer {
         }
 
         return sb.toString();
+    }
+
+    private String pendingView(Group group, Member member, boolean isCreator, boolean tournamentStarted) {
+        var totalJornadas = group.matches().stream().mapToInt(Match::jornada).max().orElse(3);
+        var html = new StringBuilder("<div class='jor-accordion'>");
+        int totalPending = 0;
+        for (int j = 1; j <= totalJornadas; j++) {
+            var jornadaIdx = j;
+            var jMatches = group.matches().stream()
+                .filter(m -> m.jornada() == jornadaIdx)
+                .filter(m -> !m.isStarted())
+                .filter(m -> !member.predictions().containsKey(m.id()))
+                .sorted(Comparator.comparing(Match::kickoff))
+                .collect(Collectors.toList());
+            if (jMatches.isEmpty()) continue;
+            totalPending += jMatches.size();
+            html.append("<details class='jor-section' open>")
+                .append("<summary class='jor-header'><span class='jor-title'><span class='jor-num'>Jornada ").append(j).append("</span></span>")
+                .append("<span class='jor-meta'>").append(jMatches.size()).append(" sin pronosticar</span></summary>")
+                .append("<div class='jor-matches'>");
+            for (var m : jMatches) {
+                html.append("<div class='match-wrapper' data-active='true'>")
+                    .append(matchCard(group, m, member, tournamentStarted, -1, isCreator))
+                    .append("</div>");
+            }
+            html.append("</div></details>");
+        }
+        html.append("</div>");
+        if (totalPending == 0) {
+            return "<div class='card' style='text-align:center;padding:2rem'><h2>🎉 ¡Todo pronosticado!</h2>"
+                + "<p>No tienes partidos pendientes en ninguna jornada.</p></div>";
+        }
+        return "<p style='margin-bottom:12px'>Tienes <strong>" + totalPending + "</strong> partidos por pronosticar:</p>" + html.toString();
     }
 
     private String knockoutCard(Group group, Match match, Member member, boolean isCreator) {
@@ -507,7 +546,7 @@ public class HtmlRenderer {
         var extrasStr = extras.toString();
         var extrasHtml = extrasStr.isEmpty() ? "" : "<div class='match-row-extras'>" + extrasStr + "</div>";
 
-        return "<article class='match-row'>" + mainRow + extrasHtml + "</article>";
+        return "<article class='match-row' data-match-id='" + match.id() + "'>" + mainRow + extrasHtml + "</article>";
     }
 
     /** Human-readable label for a KO match slot before teams are known. */
@@ -1321,6 +1360,7 @@ public class HtmlRenderer {
             + "function toggleDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(!p||!o)return;var open=p.classList.toggle('open');o.classList.toggle('open',open);document.body.style.overflow=open?'hidden':''}"
             + "function closeDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(p)p.classList.remove('open');if(o)o.classList.remove('open');document.body.style.overflow=''}"
             + "function togglePendingFilter(){var cb=document.getElementById('filterPending');if(!cb)return;var on=cb.checked;var t=0;document.querySelectorAll('.match-wrapper').forEach(function(e){var a=e.getAttribute('data-active')==='true';e.style.display=on&&!a?'none':'';if(a)t++});var i=document.getElementById('filterInfo');if(i)i.textContent=on?'Mostrando '+t+' sin finalizar':''}"
+            + "function liveScores(){var gc=window.location.pathname.split('/')[2];if(!gc)return;fetch('/groups/'+gc+'/api/scores').then(function(r){return r.json()}).then(function(d){d.forEach(function(m){var c=document.querySelector('[data-match-id=\"'+m.id+'\"]');if(!c)return;var s=c.querySelector('.score-display,.pred-display');if(s)s.textContent=m.homeGoals+'\u2013'+m.awayGoals;if(m.finished){var st=c.querySelector('.match-status');if(st){st.innerHTML='\u2705';st.className='match-status'}var pl=c.querySelector('.playing');if(pl)pl.classList.remove('playing')}})})['catch'](function(){})}if(document.querySelector('[data-match-id]'))setInterval(liveScores,15000)"
             + "document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer()})"
             + "</script>"
             + "</body></html>";

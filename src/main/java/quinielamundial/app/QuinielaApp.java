@@ -1,5 +1,6 @@
 package quinielamundial.app;
 
+import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import quinielamundial.domain.Group;
@@ -18,6 +19,7 @@ import java.net.InetSocketAddress;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 public class QuinielaApp {
@@ -200,6 +202,15 @@ public class QuinielaApp {
                     return;
                 }
 
+                if ("GET".equals(method) && tail.equals(code + "/api/scores")) {
+                    var scores = group.allMatches().stream()
+                        .filter(m -> m.isStarted())
+                        .map(m -> new LiveScore(m.id(), m.homeGoals(), m.awayGoals(), m.finished()))
+                        .toList();
+                    renderJson(exchange, new Gson().toJson(scores));
+                    return;
+                }
+
                 if ("POST".equals(method) && tail.equals(code + "/prediction")) {
                     var form = FormData.read(exchange);
                     var token = form.required("token");
@@ -362,6 +373,15 @@ public class QuinielaApp {
         }
     }
 
+    private static void renderJson(HttpExchange exchange, String json) throws IOException {
+        var bytes = json.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
+        }
+    }
+
     private static void redirect(HttpExchange exchange, String location) throws IOException {
         exchange.getResponseHeaders().set("Location", location);
         exchange.sendResponseHeaders(303, -1);
@@ -405,4 +425,6 @@ public class QuinielaApp {
             .filter(g -> g.members().values().stream().anyMatch(m -> m.name().equals(username)))
             .collect(java.util.stream.Collectors.toList());
     }
+
+    private record LiveScore(int id, int homeGoals, int awayGoals, boolean finished) {}
 }
