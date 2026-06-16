@@ -287,6 +287,27 @@ public class QuinielaApp {
                         + "&success=Contrase%C3%B1a+de+" + URLEncoder.encode(username, StandardCharsets.UTF_8) + "+reseteada:+nueva+clave+es+" + newPassword);
                     return;
                 }
+
+                if ("POST".equals(method) && tail.equals(code + "/admin/remove-member")) {
+                    var form = FormData.read(exchange);
+                    var token = form.required("token");
+                    var member = group.requireByToken(token);
+                    if (!member.name().equals(group.creator().name())) {
+                        render(exchange, renderer.errorPage("Acceso denegado", "Solo el creador del grupo puede eliminar miembros."));
+                        return;
+                    }
+                    var username = form.value("username", "").trim();
+                    if (username.isBlank()) {
+                        render(exchange, renderer.errorPage("Error", "Falta el nombre de usuario."));
+                        return;
+                    }
+                    group.removeMember(username);
+                    store.save(service.groups(), service.tournamentChampion());
+                    var j = form.value("jornada", "1");
+                    redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j
+                        + "&success=Miembro+" + URLEncoder.encode(username, StandardCharsets.UTF_8) + "+eliminado+del+grupo");
+                    return;
+                }
             }
 
             render(exchange, renderer.errorPage("404", "Ruta no encontrada."));

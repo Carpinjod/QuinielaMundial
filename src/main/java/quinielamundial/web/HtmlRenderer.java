@@ -205,8 +205,8 @@ public class HtmlRenderer {
                     .append("<div class='jor-matches'>");
 
                 for (var m : jMatches) {
-                    var isPending = member != null && !m.isStarted();
-                    accordion.append("<div class='match-wrapper' data-pending=\"").append(isPending).append("\">")
+                    var isActive = member != null && !m.finished();
+                    accordion.append("<div class='match-wrapper' data-active=\"").append(isActive).append("\">")
                         .append(matchCard(group, m, member, tournamentStarted, m.jornada(), isCreator))
                         .append("</div>");
                 }
@@ -595,20 +595,34 @@ public class HtmlRenderer {
     }
 
     public String adminResetSection(Group group, Member admin, int selectedJornada) {
+        var groupCode = escape(group.code());
+        var token = escape(admin.token());
         var members = group.members().values().stream()
             .filter(m -> !m.name().equals(admin.name()))
-            .map(m -> "<li style='display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)'>"
-                + "<span>" + escape(m.name()) + "</span>"
-                + "<form method='post' action='/groups/" + escape(group.code()) + "/admin/reset-password' style='display:inline'>"
-                + "<input type='hidden' name='token' value='" + escape(admin.token()) + "'>"
-                + "<input type='hidden' name='username' value='" + escape(m.name()) + "'>"
-                + "<input type='hidden' name='jornada' value='" + selectedJornada + "'>"
-                + "<button type='submit' class='btn-admin' style='margin:0'>Resetear clave</button>"
-                + "</form>"
-                + "</li>")
+            .map(m -> {
+                var name = escape(m.name());
+                return "<li style='display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)'>"
+                    + "<span>" + name + "</span>"
+                    + "<div style='display:flex;gap:4px'>"
+                    + "<form method='post' action='/groups/" + groupCode + "/admin/reset-password' style='display:inline'>"
+                    + "<input type='hidden' name='token' value='" + token + "'>"
+                    + "<input type='hidden' name='username' value='" + name + "'>"
+                    + "<input type='hidden' name='jornada' value='" + selectedJornada + "'>"
+                    + "<button type='submit' class='btn-admin' style='margin:0'>Resetear clave</button>"
+                    + "</form>"
+                    + "<form method='post' action='/groups/" + groupCode + "/admin/remove-member' style='display:inline'"
+                    + " onsubmit=\"return confirmAction('¿Eliminar a " + name + " del grupo? Se borrarán todos sus pronósticos.')\">"
+                    + "<input type='hidden' name='token' value='" + token + "'>"
+                    + "<input type='hidden' name='username' value='" + name + "'>"
+                    + "<input type='hidden' name='jornada' value='" + selectedJornada + "'>"
+                    + "<button type='submit' class='btn-admin' style='margin:0;background:#dc2626'>Eliminar</button>"
+                    + "</form>"
+                    + "</div>"
+                    + "</li>";
+            })
             .collect(Collectors.joining());
         if (members.isEmpty()) return "";
-        return "<div class='card'><h2>🔑 Administrar contraseñas</h2>"
+        return "<div class='card'><h2>🔑 Administrar miembros</h2>"
             + "<ul style='list-style:none;padding:0;margin:0'>" + members + "</ul></div>";
     }
 
@@ -1294,7 +1308,7 @@ public class HtmlRenderer {
             + "function confirmAction(msg){return confirm(msg)}"
             + "function toggleDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(!p||!o)return;var open=p.classList.toggle('open');o.classList.toggle('open',open);document.body.style.overflow=open?'hidden':''}"
             + "function closeDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(p)p.classList.remove('open');if(o)o.classList.remove('open');document.body.style.overflow=''}"
-            + "function togglePendingFilter(){var cb=document.getElementById('filterPending');if(!cb)return;var on=cb.checked;var t=0;document.querySelectorAll('.match-wrapper').forEach(function(e){var p=e.getAttribute('data-pending')==='true';e.style.display=on&&!p?'none':'';if(p)t++});var i=document.getElementById('filterInfo');if(i)i.textContent=on?'Mostrando '+t+' pendientes':''}"
+            + "function togglePendingFilter(){var cb=document.getElementById('filterPending');if(!cb)return;var on=cb.checked;var t=0;document.querySelectorAll('.match-wrapper').forEach(function(e){var a=e.getAttribute('data-active')==='true';e.style.display=on&&!a?'none':'';if(a)t++});var i=document.getElementById('filterInfo');if(i)i.textContent=on?'Mostrando '+t+' sin finalizar':''}"
             + "document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer()})"
             + "</script>"
             + "</body></html>";

@@ -59,6 +59,14 @@ public class Group implements Serializable {
     public void onChange(Runnable onChange) { this.onChange = onChange; }
     public Member creator() { return members().values().stream().findFirst().orElseThrow(); }
 
+    /** Removes a member by name. Throws if member doesn't exist or is the creator. */
+    public void removeMember(String memberName) {
+        if (!members.containsKey(memberName)) throw new IllegalArgumentException("El miembro '" + memberName + "' no existe en el grupo.");
+        if (memberName.equals(creator().name())) throw new IllegalArgumentException("No puedes eliminar al creador del grupo.");
+        members.remove(memberName);
+        changed();
+    }
+
     public Member join(String memberName) {
         if (memberName == null || memberName.isBlank()) throw new IllegalArgumentException("El nombre del usuario es obligatorio.");
         if (members.containsKey(memberName)) throw new IllegalArgumentException("El nombre '" + memberName + "' ya está en uso en este grupo.");
