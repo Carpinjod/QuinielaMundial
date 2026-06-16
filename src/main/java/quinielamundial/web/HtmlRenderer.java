@@ -154,23 +154,17 @@ public class HtmlRenderer {
             + "<div class='user-area'>" + userSelector + "</div>"
             + "</div>";
 
-        // ── View toggle: Fase de grupos / Pendientes / Eliminatorias ──
+        // ── View toggle: Fase de grupos / Eliminatorias ──
         var isKnockoutView = selectedJornada == 0;
-        var isPendingView = selectedJornada == -1;
         var tokenQs = member != null ? "&token=" + member.token() : "";
-        var pendingBtn = member == null ? "" : "<a href='/groups/" + escape(group.code()) + "?jornada=-1" + tokenQs + "' class='view-btn" + (isPendingView ? " active" : "") + "'>⏳ Pendientes</a>";
         var viewToggle = "<div class='view-toggle'>"
-            + "<a href='/groups/" + escape(group.code()) + "' class='view-btn" + (!isKnockoutView && !isPendingView ? " active" : "") + "'>📋 Fase de grupos</a>"
-            + pendingBtn
+            + "<a href='/groups/" + escape(group.code()) + "' class='view-btn" + (isKnockoutView ? "" : " active") + "'>📋 Fase de grupos</a>"
             + "<a href='/groups/" + escape(group.code()) + "?jornada=0" + tokenQs + "' class='view-btn" + (isKnockoutView ? " active" : "") + "'>🏆 Eliminatorias</a>"
             + "</div>";
 
-        // ── Content: Pendientes / Accordion / Bracket ──
+        // ── Content: Accordion (group stage) or Bracket (knockout) ──
         String mainContent;
-        if (isPendingView) {
-            mainContent = member == null ? "<div class='card'><p>Inicia sesión para ver tus pendientes.</p></div>"
-                : pendingView(group, member, isCreator, tournamentStarted);
-        } else if (isKnockoutView) {
+        if (isKnockoutView) {
             mainContent = bracketView(group, member, isCreator, tournamentStarted);
         } else {
             var totalJornadas = group.matches().stream().mapToInt(Match::jornada).max().orElse(3);
@@ -423,39 +417,6 @@ public class HtmlRenderer {
         }
 
         return sb.toString();
-    }
-
-    private String pendingView(Group group, Member member, boolean isCreator, boolean tournamentStarted) {
-        var totalJornadas = group.matches().stream().mapToInt(Match::jornada).max().orElse(3);
-        var html = new StringBuilder("<div class='jor-accordion'>");
-        int totalPending = 0;
-        for (int j = 1; j <= totalJornadas; j++) {
-            var jornadaIdx = j;
-            var jMatches = group.matches().stream()
-                .filter(m -> m.jornada() == jornadaIdx)
-                .filter(m -> !m.isStarted())
-                .filter(m -> !member.predictions().containsKey(m.id()))
-                .sorted(Comparator.comparing(Match::kickoff))
-                .collect(Collectors.toList());
-            if (jMatches.isEmpty()) continue;
-            totalPending += jMatches.size();
-            html.append("<details class='jor-section' open>")
-                .append("<summary class='jor-header'><span class='jor-title'><span class='jor-num'>Jornada ").append(j).append("</span></span>")
-                .append("<span class='jor-meta'>").append(jMatches.size()).append(" sin pronosticar</span></summary>")
-                .append("<div class='jor-matches'>");
-            for (var m : jMatches) {
-                html.append("<div class='match-wrapper' data-active='true'>")
-                    .append(matchCard(group, m, member, tournamentStarted, -1, isCreator))
-                    .append("</div>");
-            }
-            html.append("</div></details>");
-        }
-        html.append("</div>");
-        if (totalPending == 0) {
-            return "<div class='card' style='text-align:center;padding:2rem'><h2>🎉 ¡Todo pronosticado!</h2>"
-                + "<p>No tienes partidos pendientes en ninguna jornada.</p></div>";
-        }
-        return "<p style='margin-bottom:12px'>Tienes <strong>" + totalPending + "</strong> partidos por pronosticar:</p>" + html.toString();
     }
 
     private String knockoutCard(Group group, Match match, Member member, boolean isCreator) {
