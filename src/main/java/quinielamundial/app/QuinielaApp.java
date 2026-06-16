@@ -283,8 +283,7 @@ public class QuinielaApp {
                         return;
                     }
                     var j = form.value("jornada", "1");
-                    redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j
-                        + "&success=Contrase%C3%B1a+de+" + URLEncoder.encode(username, StandardCharsets.UTF_8) + "+reseteada:+nueva+clave+es+" + newPassword);
+                    render(exchange, renderer.passwordResetResultPage(username, newPassword, group.code(), token, Integer.parseInt(j)));
                     return;
                 }
 
@@ -351,7 +350,7 @@ public class QuinielaApp {
     }
 
     private void setTokenCookie(HttpExchange exchange, String token) {
-        exchange.getResponseHeaders().add("Set-Cookie", "quiniela_token=" + token + "; Path=/; Max-Age=31536000; SameSite=Lax");
+        exchange.getResponseHeaders().add("Set-Cookie", "quiniela_token=" + token + "; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly");
     }
 
     private static void render(HttpExchange exchange, String html) throws IOException {

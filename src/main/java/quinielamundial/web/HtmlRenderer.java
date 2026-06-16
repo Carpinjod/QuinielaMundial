@@ -256,6 +256,18 @@ public class HtmlRenderer {
         return page(title, "<div class='toast error'>" + escape(message) + "</div><p><a href='/'>Volver al inicio</a></p>");
     }
 
+    public String passwordResetResultPage(String username, String newPassword, String groupCode, String token, int jornada) {
+        return page("Contraseña reseteada",
+            "<div class='card' style='max-width:420px;margin:2rem auto;text-align:center'>"
+            + "<h2>🔑 Contraseña reseteada</h2>"
+            + "<p>Usuario: <strong>" + escape(username) + "</strong></p>"
+            + "<p style='font-size:1.5rem;background:var(--surface);padding:0.75rem 1.5rem;border-radius:8px;font-family:monospace;letter-spacing:0.1em'>"
+            + escape(newPassword) + "</p>"
+            + "<p style='color:var(--muted)'>Guarda esta contraseña. Solo se muestra una vez.</p>"
+            + "<a href='/groups/" + escape(groupCode) + "?token=" + escape(token) + "&jornada=" + jornada + "' class='btn'>Volver al grupo</a>"
+            + "</div>");
+    }
+
     // ── Match card ──
     private String matchCard(Group group, Match match, Member member, boolean tournamentStarted, int selectedJornada, boolean isCreator) {
         var started = match.isStarted();
