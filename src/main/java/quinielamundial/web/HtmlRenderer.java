@@ -330,7 +330,7 @@ public class HtmlRenderer {
         if (finished) {
             statusHtml = "<div>" + predictionResultBadge(match, memberPrediction, starSelected) + "</div>";
         } else if (started) {
-            statusHtml = "<div class='match-status playing'>🔴</div>";
+            statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
         }
 
         var mainRow = "<div class='match-row-main'>"
@@ -503,7 +503,7 @@ public class HtmlRenderer {
         } else if (finished) {
             statusHtml = "<div>" + predictionResultBadge(match, memberPrediction, false) + "</div>";
         } else if (started) {
-            statusHtml = "<div class='match-status playing'>🔴</div>";
+            statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
         }
 
         var mainRow = "<div class='match-row-main'>"
@@ -1317,6 +1317,17 @@ public class HtmlRenderer {
 
             + ".match-wrapper{transition:opacity .2s ease}"
 
+            // EN VIVO badge (green pulsing dot + text)
+            + ".match-status.playing{display:inline-flex;align-items:center;gap:5px;color:#22c55e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;animation:none}"
+            + ".live-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;animation:livePulse 1.2s ease-in-out infinite;vertical-align:middle}"
+            + "@keyframes livePulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(34,197,94,.6)}50%{opacity:.7;box-shadow:0 0 0 5px rgba(34,197,94,0)}}"
+
+            // Back-to-top button
+            + ".btn-top{position:fixed;bottom:clamp(76px,10vh,96px);right:clamp(16px,2.5vw,28px);width:48px;height:48px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text-sec);font-size:22px;cursor:pointer;z-index:99;box-shadow:0 4px 16px rgba(0,0,0,.3);opacity:0;pointer-events:none;transform:translateY(12px);transition:all .25s ease;display:flex;align-items:center;justify-content:center}"
+            + ".btn-top.visible{opacity:1;pointer-events:auto;transform:translateY(0)}"
+            + ".btn-top:hover{background:var(--surface-hover);color:var(--text);border-color:var(--text-dim);transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,.4)}"
+            + ".btn-top:active{transform:scale(.95)}"
+
             + "</style>"
             + "</head><body>"
             // ── Global header ──
@@ -1325,6 +1336,8 @@ public class HtmlRenderer {
             + "<main>" + body + "</main>"
             // ── Footer ──
             + "<footer class='site-footer'>Quiniela Mundial 2026</footer>"
+            // ── Back-to-top button ──
+            + "<button id='btn-top' class='btn-top' onclick='window.scrollTo({top:0,behavior:\"smooth\"})' aria-label='Volver arriba'>⬆</button>"
             // ── Scripts ──
             + "<script>"
             + "function showToast(type,msg){var t=document.createElement('div');t.className='toast '+type;t.textContent=msg;var m=document.querySelector('main');if(!m)return;m.insertBefore(t,m.firstChild);setTimeout(function(){t.style.opacity='0';t.style.transform='translateY(-8px)';setTimeout(function(){t.remove()},300)},3500)}"
@@ -1336,6 +1349,7 @@ public class HtmlRenderer {
             + "document.addEventListener('submit',async function(e){var f=e.target;if(!f.closest('.group-layout,.group-header'))return;if(f.action.includes('/admin/')||f.action.includes('/logout'))return;e.preventDefault();var msg=f.getAttribute('data-confirm');if(msg&&!confirm(msg))return;var btn=f.querySelector('button[type=submit]');var orig=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Guardando\u2026'}try{var r=await fetch(f.action,{method:'POST',body:new URLSearchParams(new FormData(f)),headers:{'X-Requested-With':'XMLHttpRequest'}});var ct=r.headers.get('Content-Type')||'';if(ct.includes('application/json')){var j=await r.json();if(j.success){if(j.html){var tmp=document.createElement('div');tmp.innerHTML=j.html;var newMain=tmp.querySelector('main');var m=document.querySelector('main');if(m&&newMain){m.innerHTML=newMain.innerHTML}}showToast('success',j.message)}else{showToast('error',j.message);if(btn){btn.disabled=false;btn.textContent=orig}}}else{window.location.reload()}}catch(err){showToast('error','Error de conexi\u00f3n');if(btn){btn.disabled=false;btn.textContent=orig}}})"
              + ";document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer()})"
              + ";(function(){var e=document.querySelector('.jor-section[open]');if(e)setTimeout(function(){e.scrollIntoView({behavior:'smooth',block:'start'})},100)})()"
+             + ";window.addEventListener('scroll',function(){var b=document.getElementById('btn-top');if(!b)return;b.classList.toggle('visible',window.scrollY>window.innerHeight*0.4)})"
              + "</script>"
             + "</body></html>";
     }
