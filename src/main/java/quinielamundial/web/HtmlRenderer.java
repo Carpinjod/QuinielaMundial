@@ -349,7 +349,7 @@ public class HtmlRenderer {
     private String predictionForm(Group group, Match match, Member member, quinielamundial.domain.Prediction existing, int selectedJornada) {
         var home = existing == null ? "" : String.valueOf(existing.homeGoals());
         var away = existing == null ? "" : String.valueOf(existing.awayGoals());
-        var confirmAttr = existing == null ? "" : " onsubmit=\"return confirmAction('¿Actualizar tu pronóstico de " + home + "–" + away + " a otro resultado?')\"";
+        var confirmAttr = existing == null ? "" : " data-confirm=\"¿Actualizar tu pronóstico de " + home + "–" + away + " a otro resultado?\"";
         return "<form method='post' action='/groups/" + group.code() + "/prediction' class='score-form'" + confirmAttr + ">"
             + hiddenToken(member.token()) + hiddenJornada(selectedJornada)
             + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
@@ -536,7 +536,7 @@ public class HtmlRenderer {
     private String knockoutPredictionForm(Group group, Match match, Member member, quinielamundial.domain.Prediction existing) {
         var home = existing == null ? "" : String.valueOf(existing.homeGoals());
         var away = existing == null ? "" : String.valueOf(existing.awayGoals());
-        var confirmAttr = existing == null ? "" : " onsubmit=\"return confirmAction('¿Actualizar tu pronóstico de " + home + "–" + away + " a otro resultado?')\"";
+        var confirmAttr = existing == null ? "" : " data-confirm=\"¿Actualizar tu pronóstico de " + home + "–" + away + " a otro resultado?\"";
         return "<form method='post' action='/groups/" + group.code() + "/prediction' class='score-form'" + confirmAttr + ">"
             + "<input type='hidden' name='token' value='" + escape(member.token()) + "'>"
             + "<input type='hidden' name='jornada' value='0'>"
@@ -554,7 +554,7 @@ public class HtmlRenderer {
         var home = match.homeGoals() == null ? "" : String.valueOf(match.homeGoals());
         var away = match.awayGoals() == null ? "" : String.valueOf(match.awayGoals());
         var hasResult = match.finished();
-        var confirmAttr = hasResult ? " onsubmit=\"return confirmAction('¿Sobrescribir el resultado " + home + "–" + away + "?')\"" : " onsubmit=\"return confirmAction('¿Registrar este resultado? Una vez guardado, se calcularán los puntos.')\"";
+        var confirmAttr = hasResult ? " data-confirm=\"¿Sobrescribir el resultado " + home + "–" + away + "?\"" : " data-confirm=\"¿Registrar este resultado? Una vez guardado, se calcularán los puntos.\"";
         return "<div class='result-admin'><form method='post' action='/groups/" + group.code() + "/result'" + confirmAttr + ">"
             + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
             + "<input type='hidden' name='jornada' value='0'>"
@@ -584,7 +584,7 @@ public class HtmlRenderer {
         var home = match.homeGoals() == null ? "" : String.valueOf(match.homeGoals());
         var away = match.awayGoals() == null ? "" : String.valueOf(match.awayGoals());
         var hasResult = match.finished();
-        var confirmAttr = hasResult ? " onsubmit=\"return confirmAction('¿Sobrescribir el resultado " + home + "–" + away + "?')\"" : " onsubmit=\"return confirmAction('¿Registrar este resultado? Una vez guardado, se calcularán los puntos.')\"";
+        var confirmAttr = hasResult ? " data-confirm=\"¿Sobrescribir el resultado " + home + "–" + away + "?\"" : " data-confirm=\"¿Registrar este resultado? Una vez guardado, se calcularán los puntos.\"";
         return "<div class='result-admin'><form method='post' action='/groups/" + group.code() + "/result'" + confirmAttr + ">"
             + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
             + hiddenJornada(selectedJornada)
@@ -937,7 +937,7 @@ public class HtmlRenderer {
             + ".muted{color:var(--text-sec);font-size:clamp(13px,1.2vw,15px);line-height:1.7}"
 
             // Toasts
-            + ".toast{padding:clamp(10px,1.2vw,14px) clamp(14px,1.5vw,20px);border-radius:var(--radius-md);margin-bottom:clamp(12px,1.5vw,20px);font-weight:500;font-size:clamp(13px,1.2vw,15px);display:flex;align-items:center;gap:8px;border:1px solid transparent}"
+            + ".toast{padding:clamp(10px,1.2vw,14px) clamp(14px,1.5vw,20px);border-radius:var(--radius-md);margin-bottom:clamp(12px,1.5vw,20px);font-weight:500;font-size:clamp(13px,1.2vw,15px);display:flex;align-items:center;gap:8px;border:1px solid transparent;transition:opacity .3s ease,transform .3s ease}"
             + ".toast.error{background:var(--red-light);color:var(--red);border-color:var(--red-border)}"
             + ".toast.success{background:var(--green-light);color:var(--green);border-color:var(--green-border)}"
 
@@ -1313,16 +1313,14 @@ public class HtmlRenderer {
             + "<footer class='site-footer'>Quiniela Mundial 2026</footer>"
             // ── Scripts ──
             + "<script>"
-            + "document.addEventListener('submit',function(e){"
-            + "var btn=e.target.querySelector('button[type=submit]');"
-            + "if(btn&&!btn.dataset.noDisable){btn.disabled=true;btn.textContent=btn.textContent.replace(/^(Guardar|Entrar|Crear|Actualizar|Pronosticar)/,'$1…')}"
-            + "});"
+            + "function showToast(type,msg){var t=document.createElement('div');t.className='toast '+type;t.textContent=msg;var m=document.querySelector('main');if(!m)return;m.insertBefore(t,m.firstChild);setTimeout(function(){t.style.opacity='0';t.style.transform='translateY(-8px)';setTimeout(function(){t.remove()},300)},3500)}"
             + "function confirmAction(msg){return confirm(msg)}"
             + "function toggleDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(!p||!o)return;var open=p.classList.toggle('open');o.classList.toggle('open',open);document.body.style.overflow=open?'hidden':''}"
             + "function closeDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(p)p.classList.remove('open');if(o)o.classList.remove('open');document.body.style.overflow=''}"
             + "function togglePendingFilter(){var cb=document.getElementById('filterPending');if(!cb)return;var on=cb.checked;var t=0;document.querySelectorAll('.match-wrapper').forEach(function(e){var a=e.getAttribute('data-active')==='true';e.style.display=on&&!a?'none':'';if(a)t++});var i=document.getElementById('filterInfo');if(i)i.textContent=on?'Mostrando '+t+' sin finalizar':''}"
             + "function liveScores(){var gc=window.location.pathname.split('/')[2];if(!gc)return;try{fetch('/groups/'+gc+'/api/scores').then(function(r){return r.json()}).then(function(d){d.forEach(function(m){var c=document.querySelector('[data-match-id=\"'+m.id+'\"]');if(!c)return;var s=c.querySelector('.score-display,.pred-display');if(s)s.textContent=m.homeGoals+'\u2013'+m.awayGoals;if(m.finished){var st=c.querySelector('.match-status');if(st){st.innerHTML='\u2705';st.className='match-status'}var pl=c.querySelector('.playing');if(pl)pl.classList.remove('playing')}})})['catch'](function(e){})}catch(e){}}if(document.querySelector('[data-match-id]'))setInterval(liveScores,15000);"
-            + "document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer()})"
+            + "document.addEventListener('submit',async function(e){var f=e.target;if(!f.closest('.group-layout,.group-header'))return;if(f.action.includes('/admin/')||f.action.includes('/logout'))return;e.preventDefault();var msg=f.getAttribute('data-confirm');if(msg&&!confirm(msg))return;var btn=f.querySelector('button[type=submit]');var orig=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Guardando\u2026'}try{var r=await fetch(f.action,{method:'POST',body:new URLSearchParams(new FormData(f)),headers:{'X-Requested-With':'XMLHttpRequest'}});var ct=r.headers.get('Content-Type')||'';if(ct.includes('application/json')){var j=await r.json();if(j.success){if(j.html){var tmp=document.createElement('div');tmp.innerHTML=j.html;var newMain=tmp.querySelector('main');var m=document.querySelector('main');if(m&&newMain){m.innerHTML=newMain.innerHTML}}showToast('success',j.message)}else{showToast('error',j.message);if(btn){btn.disabled=false;btn.textContent=orig}}}else{window.location.reload()}}catch(err){showToast('error','Error de conexi\u00f3n');if(btn){btn.disabled=false;btn.textContent=orig}}})"
+            + ";document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer()})"
             + "</script>"
             + "</body></html>";
     }
