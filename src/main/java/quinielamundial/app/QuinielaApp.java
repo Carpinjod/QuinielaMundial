@@ -184,6 +184,18 @@ public class QuinielaApp {
                 return;
             }
 
+            // ── Shareable join link ──
+            if ("GET".equals(method) && path.startsWith("/join/")) {
+                var code = path.substring("/join/".length()).toUpperCase();
+                var group = service.group(code);
+                if (group == null) {
+                    render(exchange, renderer.errorPage("Grupo no encontrado", "El código no existe."));
+                    return;
+                }
+                redirect(exchange, "/groups/" + group.code());
+                return;
+            }
+
             if (path.startsWith("/groups/")) {
                 var tail = path.substring("/groups/".length());
                 var code = tail.contains("/") ? tail.substring(0, tail.indexOf('/')).toUpperCase() : tail.toUpperCase();
@@ -216,6 +228,7 @@ public class QuinielaApp {
                     var token = form.required("token");
                     group.submitPrediction(token, Integer.parseInt(form.required("matchId")), Integer.parseInt(form.required("homeGoals")), Integer.parseInt(form.required("awayGoals")));
                     var j = form.value("jornada", "1");
+                    if (isAjaxRequest(exchange)) { ajaxGroupPageResponse(exchange, group, token, j, "Pronóstico guardado"); return; }
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Pron%C3%B3stico+guardado");
                     return;
                 }
@@ -225,6 +238,7 @@ public class QuinielaApp {
                     var token = form.required("token");
                     group.setChampionBet(token, form.value("team", "").trim());
                     var j = form.value("jornada", "1");
+                    if (isAjaxRequest(exchange)) { ajaxGroupPageResponse(exchange, group, token, j, "Apuesta al campeón guardada"); return; }
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Apuesta+al+campe%C3%B3n+guardada");
                     return;
                 }
@@ -234,6 +248,7 @@ public class QuinielaApp {
                     var token = form.required("token");
                     group.setStarMatch(token, Integer.parseInt(form.required("jornada")), Integer.parseInt(form.required("matchId")));
                     var j = form.value("jornada", "1");
+                    if (isAjaxRequest(exchange)) { ajaxGroupPageResponse(exchange, group, token, j, "Partido estrella actualizado"); return; }
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Partido+estrella+actualizado");
                     return;
                 }
@@ -243,6 +258,13 @@ public class QuinielaApp {
                     var token = form.required("token");
                     var member = group.requireByToken(token);
                     if (!member.name().equals(group.creator().name())) {
+                        if (isAjaxRequest(exchange)) {
+                            var err = new java.util.LinkedHashMap<String, Object>();
+                            err.put("success", false);
+                            err.put("message", "Solo el creador del grupo puede cargar resultados.");
+                            renderJson(exchange, new Gson().toJson(err));
+                            return;
+                        }
                         render(exchange, renderer.errorPage("Acceso denegado", "Solo el creador del grupo puede cargar resultados."));
                         return;
                     }
@@ -256,6 +278,7 @@ public class QuinielaApp {
                         service.propagateWinners(group);
                     }
                     var j = form.value("jornada", "1");
+                    if (isAjaxRequest(exchange)) { ajaxGroupPageResponse(exchange, group, token, j, "Resultado guardado"); return; }
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Resultado+guardado");
                     return;
                 }
@@ -265,12 +288,20 @@ public class QuinielaApp {
                     var token = form.required("token");
                     var member = group.requireByToken(token);
                     if (!member.name().equals(group.creator().name())) {
+                        if (isAjaxRequest(exchange)) {
+                            var err = new java.util.LinkedHashMap<String, Object>();
+                            err.put("success", false);
+                            err.put("message", "Solo el creador del grupo puede actualizar el campeón.");
+                            renderJson(exchange, new Gson().toJson(err));
+                            return;
+                        }
                         render(exchange, renderer.errorPage("Acceso denegado", "Solo el creador del grupo puede actualizar el campeón."));
                         return;
                     }
                     service.setTournamentChampion(form.required("team"));
                     store.save(service.groups(), service.tournamentChampion());
                     var j = form.value("jornada", "1");
+                    if (isAjaxRequest(exchange)) { ajaxGroupPageResponse(exchange, group, token, j, "Campeón actualizado"); return; }
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Campe%C3%B3n+actualizado");
                     return;
                 }
@@ -318,10 +349,31 @@ public class QuinielaApp {
                         + "&success=Miembro+" + URLEncoder.encode(username, StandardCharsets.UTF_8) + "+eliminado+del+grupo");
                     return;
                 }
+
+                if ("POST".equals(method) && tail.equals(code + "/admin/delete-group")) {
+                    var form = FormData.read(exchange);
+                    var token = form.required("token");
+                    var member = group.requireByToken(token);
+                    if (!member.name().equals(group.creator().name())) {
+                        render(exchange, renderer.errorPage("Acceso denegado", "Solo el creador del grupo puede eliminar el grupo."));
+                        return;
+                    }
+                    service.removeGroup(group.code());
+                    store.save(service.groups(), service.tournamentChampion());
+                    redirect(exchange, "/?success=Grupo+" + URLEncoder.encode(group.name(), StandardCharsets.UTF_8) + "+eliminado");
+                    return;
+                }
             }
 
             render(exchange, renderer.errorPage("404", "Ruta no encontrada."));
         } catch (Exception e) {
+            if (isAjaxRequest(exchange)) {
+                var err = new java.util.LinkedHashMap<String, Object>();
+                err.put("success", false);
+                err.put("message", e.getMessage() == null ? "Error inesperado" : e.getMessage());
+                renderJson(exchange, new Gson().toJson(err));
+                return;
+            }
             render(exchange, renderer.errorPage("Error", e.getMessage() == null ? "Error inesperado" : e.getMessage()));
         }
     }
@@ -362,6 +414,21 @@ public class QuinielaApp {
 
     private void setTokenCookie(HttpExchange exchange, String token) {
         exchange.getResponseHeaders().add("Set-Cookie", "quiniela_token=" + token + "; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly");
+    }
+
+    private boolean isAjaxRequest(HttpExchange exchange) {
+        return "XMLHttpRequest".equals(exchange.getRequestHeaders().getFirst("X-Requested-With"));
+    }
+
+    private void ajaxGroupPageResponse(HttpExchange exchange, Group group, String token, String jornadaStr, String message) throws IOException {
+        var selectedJornada = jornadaStr.isBlank() ? 0 : Integer.parseInt(jornadaStr);
+        var member = group.requireByToken(token);
+        var pageHtml = renderer.groupPage(group, member, service.candidates(), service.tournamentChampion(), service.tournamentStarted(), selectedJornada, null);
+        var json = new java.util.LinkedHashMap<String, Object>();
+        json.put("success", true);
+        json.put("message", message);
+        json.put("html", pageHtml);
+        renderJson(exchange, new Gson().toJson(json));
     }
 
     private static void render(HttpExchange exchange, String html) throws IOException {

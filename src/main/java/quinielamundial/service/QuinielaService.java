@@ -39,6 +39,7 @@ public class QuinielaService {
     public boolean tournamentStarted() { return groups.values().stream().flatMap(group -> group.matches().stream()).anyMatch(match -> Instant.now().isAfter(match.kickoff())); }
     public Group createGroup(String name, String creator) { var group = new Group(uniqueCode(), name, defaultMatches()); group.join(creator); groups.put(group.code(), group); return group; }
     public Group joinGroup(String code, String member) { var group = group(code); if (group == null) return null; if (member == null || member.isBlank()) throw new IllegalArgumentException("El nombre del usuario es obligatorio."); group.join(member); return group; }
+    public void removeGroup(String code) { if (!groups.containsKey(code)) throw new IllegalArgumentException("El grupo '" + code + "' no existe."); groups.remove(code); }
     public Group group(String code) { return groups.get(code == null ? "" : code.trim().toUpperCase()); }
     public Map.Entry<String, Group> findGroupByToken(String token) {
         if (token == null || token.isBlank()) return null;

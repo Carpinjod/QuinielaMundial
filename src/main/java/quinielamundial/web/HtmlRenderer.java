@@ -222,7 +222,8 @@ public class HtmlRenderer {
             : championForm(group, member, candidates, tournamentStarted, selectedJornada, championTeam);
         var championAdmin = isCreator ? championResultForm(group.code(), candidates, selectedJornada, member.token()) : "";
         var adminReset = isCreator ? adminResetSection(group, member, selectedJornada) : "";
-        var sideContent = leaderboard + championSection + championAdmin + adminReset;
+        var deleteGroup = isCreator ? deleteGroupButton(group.code(), group.name(), member.token()) : "";
+        var sideContent = leaderboard + championSection + championAdmin + adminReset + deleteGroup;
 
         // ── Drawer (mobile) + FAB ──
         var drawerHtml = "";
@@ -636,6 +637,18 @@ public class HtmlRenderer {
         if (members.isEmpty()) return "";
         return "<div class='card'><h2>🔑 Administrar miembros</h2>"
             + "<ul style='list-style:none;padding:0;margin:0'>" + members + "</ul></div>";
+    }
+
+    public String deleteGroupButton(String groupCode, String groupName, String token) {
+        var safeName = escape(groupName);
+        return "<div class='card' style='border:2px solid #dc2626'>"
+            + "<h2 style='color:#dc2626;margin-top:0'>🗑️ Eliminar grupo</h2>"
+            + "<p style='font-size:14px;color:#888;margin:8px 0 12px'>Esta acción eliminará el grupo <b>" + safeName + "</b> y todos los pronósticos de todos los miembros de forma permanente. No se puede deshacer.</p>"
+            + "<form method='post' action='/groups/" + escape(groupCode) + "/admin/delete-group'"
+            + " onsubmit=\"return confirmAction('¿Estás seguro de eliminar el grupo " + safeName + "? Se borrarán TODOS los pronósticos de TODOS los miembros. Esta acción NO se puede deshacer.')\">"
+            + "<input type='hidden' name='token' value='" + escape(token) + "'>"
+            + "<button type='submit' class='btn-admin' style='background:#dc2626;width:100%;padding:10px;font-size:14px'>Eliminar grupo permanentemente</button>"
+            + "</form></div>";
     }
 
     // ── Leaderboard ──
