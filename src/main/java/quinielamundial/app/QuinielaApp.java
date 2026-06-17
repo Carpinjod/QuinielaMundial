@@ -27,6 +27,7 @@ public class QuinielaApp {
     private final StateStore store = new StateStore(dataDir.resolve("quiniela-state.txt"));
     private final QuinielaService service = new QuinielaService();
     private final HtmlRenderer renderer = new HtmlRenderer();
+    private final String adminUsername = System.getenv().getOrDefault("ADMIN_USER", "PJ");
     private AuthService auth;
 
     public void start(int port) throws IOException {
@@ -60,7 +61,9 @@ public class QuinielaApp {
 
             if ("GET".equals(method) && "/".equals(path)) {
                 var loggedIn = resolveSession(exchange);
-                render(exchange, renderer.homePage(service.groups(), loggedIn, userGroups(loggedIn), null));
+                var isAdmin = loggedIn != null && loggedIn.equals(adminUsername);
+                var success = FormData.param(exchange, "success");
+                render(exchange, renderer.homePage(service.groups(), loggedIn, userGroups(loggedIn), null, success.isBlank() ? null : success, isAdmin));
                 return;
             }
 
@@ -172,7 +175,8 @@ public class QuinielaApp {
                 var group = service.joinGroup(form.value("code", ""), memberName);
                 if (group == null) {
                     var loggedIn2 = resolveSession(exchange);
-                    render(exchange, renderer.homePage(service.groups(), loggedIn2, userGroups(loggedIn2), "Código inválido."));
+                    var isAdmin2 = loggedIn2 != null && loggedIn2.equals(adminUsername);
+                    render(exchange, renderer.homePage(service.groups(), loggedIn2, userGroups(loggedIn2), "Código inválido.", null, isAdmin2));
                     return;
                 }
                 attachPersistence(group);
@@ -351,11 +355,9 @@ public class QuinielaApp {
                 }
 
                 if ("POST".equals(method) && tail.equals(code + "/admin/delete-group")) {
-                    var form = FormData.read(exchange);
-                    var token = form.required("token");
-                    var member = group.requireByToken(token);
-                    if (!member.name().equals(group.creator().name())) {
-                        render(exchange, renderer.errorPage("Acceso denegado", "Solo el creador del grupo puede eliminar el grupo."));
+                    var loggedIn = resolveSession(exchange);
+                    if (loggedIn == null || !loggedIn.equals(adminUsername)) {
+                        render(exchange, renderer.errorPage("Acceso denegado", "No tienes permiso para eliminar grupos."));
                         return;
                     }
                     service.removeGroup(group.code());
