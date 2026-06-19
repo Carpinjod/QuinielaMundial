@@ -303,45 +303,60 @@ public class HtmlRenderer {
         var groupHtml = "<div class='group-badge'>" + groupLetter(match.id()) + "</div>";
 
         // 3. Team scores for mobile compact list (inside each .team row)
+        // Also includes the star icon on mobile (hidden on desktop via .team-score{display:none})
         String homeTeamScore = "", awayTeamScore = "";
         if (finished) {
-            homeTeamScore = "<span class='team-score'>" + match.homeGoals() + "</span>";
+            var starMark = starSelected ? "<span class='star-icon-team'>⭐</span>" : "";
+            homeTeamScore = "<span class='team-score'>" + match.homeGoals() + starMark + "</span>";
             awayTeamScore = "<span class='team-score'>" + match.awayGoals() + "</span>";
         } else if (started && memberPrediction != null) {
-            homeTeamScore = "<span class='team-score'>" + memberPrediction.homeGoals() + "</span>";
+            var starMark = starSelected ? "<span class='star-icon-team'>⭐</span>" : "";
+            homeTeamScore = "<span class='team-score'>" + memberPrediction.homeGoals() + starMark + "</span>";
             awayTeamScore = "<span class='team-score'>" + memberPrediction.awayGoals() + "</span>";
         }
 
-        // 4. Home team: flag + name + score (score visible on mobile only)
+        // 4. Determine if we show inline form (inputs inside each .team row)
+        var isFormMode = member != null && !started;
+        var homeFormVal = memberPrediction == null ? "" : String.valueOf(memberPrediction.homeGoals());
+        var awayFormVal = memberPrediction == null ? "" : String.valueOf(memberPrediction.awayGoals());
+
+        // 5. Home team: flag + name + [score (mobile) or input (form mode)]
         var homeHtml = "<div class='team team-home'>"
             + "<span class='flag'>" + flagOf(match.home()) + "</span>"
             + "<span class='team-name'>" + escape(teamEs(match.home())) + "</span>"
-            + homeTeamScore
-            + "</div>";
+            + homeTeamScore;
+        if (isFormMode) {
+            homeHtml += "<input name='homeGoals' type='number' min='0' class='score-input team-input' value='" + homeFormVal + "' placeholder='0' required>";
+        }
+        homeHtml += "</div>";
 
-        // 5. Score area (inputs + button, or score display)
+        // 6. Score area — star badge back inside scoreHtml for correct desktop layout
         var starBadge = starSelected ? "<span class='star-icon'>⭐</span>" : "";
         var scoreHtml = "";
         if (finished) {
-            scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span></div>";
+            scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span>" + starBadge + "</div>";
         } else if (member == null) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (started) {
             scoreHtml = memberPrediction == null
                 ? "<span class='idle-msg'>🔴</span>"
-                : "<span class='pred-display'><span class='score-home'>" + memberPrediction.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + memberPrediction.awayGoals() + "</span></span>";
-        } else {
-            scoreHtml = predictionForm(group, match, member, memberPrediction, selectedJornada);
+                : "<span class='pred-display'><span class='score-home'>" + memberPrediction.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + memberPrediction.awayGoals() + "</span></span>" + starBadge;
         }
+        // Form mode: scoreHtml stays empty — the form wraps the teams instead
 
-        // 6. Away team: flag + name + score (score visible on mobile only, row-reverse on desktop)
-        var awayHtml = "<div class='team team-away'>"
+        // 7. Away team: flag + name + [score (mobile) or input (form mode)]
+        // In form mode, override row-reverse so input appears on the right
+        var awayClass = "team team-away" + (isFormMode ? " team-form-mode" : "");
+        var awayHtml = "<div class='" + awayClass + "'>"
             + "<span class='flag'>" + flagOf(match.away()) + "</span>"
             + "<span class='team-name'>" + escape(teamEs(match.away())) + "</span>"
-            + awayTeamScore
-            + "</div>";
+            + awayTeamScore;
+        if (isFormMode) {
+            awayHtml += "<input name='awayGoals' type='number' min='0' class='score-input team-input' value='" + awayFormVal + "' placeholder='0' required>";
+        }
+        awayHtml += "</div>";
 
-        // 7. Status / result badge (rightmost column)
+        // 8. Status / result badge (rightmost column)
         var statusHtml = "";
         if (finished) {
             statusHtml = "<div class='match-status'>" + predictionResultBadge(match, memberPrediction, starSelected, group) + "</div>";
@@ -349,12 +364,28 @@ public class HtmlRenderer {
             statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
         }
 
+        // 9. Assemble: two modes
+        //    - Form mode: <form> wraps .match-teams, inputs inside each .team, button after teams
+        //    - Normal mode: separate .match-teams + .match-actions (score, status, star)
+        String matchTeamsHtml, matchActionsHtml;
+        if (isFormMode) {
+            var confirmAttr = memberPrediction == null ? "" : " data-confirm=\"¿Actualizar tu pronóstico de " + homeFormVal + "–" + awayFormVal + " a otro resultado?\"";
+            var btnLabel = memberPrediction == null ? "Pronosticar" : "Actualizar";
+            matchTeamsHtml = "<form method='post' action='/groups/" + group.code() + "/prediction' class='score-form team-form'" + confirmAttr + ">"
+                + hiddenToken(member.token()) + hiddenJornada(selectedJornada)
+                + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
+                + "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>"
+                + "<button type='submit' class='btn-predict'>" + btnLabel + "</button>"
+                + "</form>";
+            matchActionsHtml = "<div class='match-actions'>" + statusHtml + starBadge + "</div>";
+        } else {
+            matchTeamsHtml = "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>";
+            matchActionsHtml = "<div class='match-actions'>" + scoreHtml + statusHtml + "</div>";
+        }
+
         var mainRow = "<div class='match-row-main'>"
             + "<div class='match-row-top'>" + timeHtml + groupHtml + "</div>"
-            + "<div class='match-row-body'>"
-            + "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>"
-            + "<div class='match-actions'>" + scoreHtml + statusHtml + starBadge + "</div>"
-            + "</div>"
+            + "<div class='match-row-body'>" + matchTeamsHtml + matchActionsHtml + "</div>"
             + "</div>";
 
         // ═══ Extras row (star, admin result, predictions toggle) ═══
@@ -482,7 +513,12 @@ public class HtmlRenderer {
             awayTeamScore = "<span class='team-score'>" + memberPrediction.awayGoals() + "</span>";
         }
 
-        // 4. Home team
+        // 4. Form mode (teams known, not started, member present)
+        var isFormMode = teamsKnown && member != null && !started;
+        var homeFormVal = memberPrediction == null ? "" : String.valueOf(memberPrediction.homeGoals());
+        var awayFormVal = memberPrediction == null ? "" : String.valueOf(memberPrediction.awayGoals());
+
+        // 5. Home team
         String homeHtml;
         if (!teamsKnown && (match.home() == null || match.away() == null)) {
             var label = matchSourceLabel(match.id());
@@ -491,11 +527,14 @@ public class HtmlRenderer {
             homeHtml = "<div class='team team-home'>"
                 + "<span class='flag'>" + flagOf(match.home()) + "</span>"
                 + "<span class='team-name'>" + escape(teamEs(match.home())) + "</span>"
-                + homeTeamScore
-                + "</div>";
+                + homeTeamScore;
+            if (isFormMode) {
+                homeHtml += "<input name='homeGoals' type='number' min='0' class='score-input team-input' value='" + homeFormVal + "' placeholder='0' required>";
+            }
+            homeHtml += "</div>";
         }
 
-        // 5. Score area
+        // 6. Score area (empty for form mode — form wraps teams)
         var scoreHtml = "";
         if (!teamsKnown) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
@@ -507,24 +546,27 @@ public class HtmlRenderer {
             scoreHtml = memberPrediction == null
                 ? "<span class='idle-msg'>🔴</span>"
                 : "<span class='pred-display'><span class='score-home'>" + memberPrediction.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + memberPrediction.awayGoals() + "</span></span>";
-        } else {
-            scoreHtml = knockoutPredictionForm(group, match, member, memberPrediction);
         }
+        // Form mode: scoreHtml stays empty — form wraps the teams instead
 
-        // 6. Away team
+        // 7. Away team
         String awayHtml;
         if (!teamsKnown && (match.home() == null || match.away() == null)) {
             var label = matchSourceLabel(match.id());
             awayHtml = "<div class='team team-away'><span class='team-name muted'>" + escape(label[1]) + "</span></div>";
         } else {
-            awayHtml = "<div class='team team-away'>"
+            var awayClass = "team team-away" + (isFormMode ? " team-form-mode" : "");
+            awayHtml = "<div class='" + awayClass + "'>"
                 + "<span class='flag'>" + flagOf(match.away()) + "</span>"
                 + "<span class='team-name'>" + escape(teamEs(match.away())) + "</span>"
-                + awayTeamScore
-                + "</div>";
+                + awayTeamScore;
+            if (isFormMode) {
+                awayHtml += "<input name='awayGoals' type='number' min='0' class='score-input team-input' value='" + awayFormVal + "' placeholder='0' required>";
+            }
+            awayHtml += "</div>";
         }
 
-        // 6. Status / result badge
+        // 8. Status / result badge
         var statusHtml = "";
         if (!teamsKnown) {
             statusHtml = "<div class='match-status locked'>🔒</div>";
@@ -534,12 +576,26 @@ public class HtmlRenderer {
             statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
         }
 
+        // 9. Assemble: form mode or normal
+        String matchTeamsHtml, matchActionsHtml;
+        if (isFormMode) {
+            var confirmAttr = memberPrediction == null ? "" : " data-confirm=\"¿Actualizar tu pronóstico de " + homeFormVal + "–" + awayFormVal + " a otro resultado?\"";
+            var btnLabel = memberPrediction == null ? "Pronosticar" : "Actualizar";
+            matchTeamsHtml = "<form method='post' action='/groups/" + group.code() + "/prediction' class='score-form team-form'" + confirmAttr + ">"
+                + hiddenToken(member.token()) + "<input type='hidden' name='jornada' value='0'>"
+                + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
+                + "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>"
+                + "<button type='submit' class='btn-predict'>" + btnLabel + "</button>"
+                + "</form>";
+            matchActionsHtml = "<div class='match-actions'>" + statusHtml + "</div>";
+        } else {
+            matchTeamsHtml = "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>";
+            matchActionsHtml = "<div class='match-actions'>" + scoreHtml + statusHtml + "</div>";
+        }
+
         var mainRow = "<div class='match-row-main'>"
             + "<div class='match-row-top'>" + timeHtml + groupHtml + "</div>"
-            + "<div class='match-row-body'>"
-            + "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>"
-            + "<div class='match-actions'>" + scoreHtml + statusHtml + "</div>"
-            + "</div>"
+            + "<div class='match-row-body'>" + matchTeamsHtml + matchActionsHtml + "</div>"
             + "</div>";
 
         // ═══ Extras ═══
@@ -1132,8 +1188,9 @@ public class HtmlRenderer {
              + ".match-row-main{display:grid;grid-template-columns:44px 28px 1fr auto 1fr;gap:clamp(6px,.8vw,12px)}"
              + ".match-row-top,.match-row-body,.match-teams,.match-actions{display:contents}"
              + ".vs-badge{display:none}"
-              + ".team-home{grid-column:3}.team-away{grid-column:5;flex-direction:row-reverse}"
-             + ".score-form,.match-score,.idle-msg,.pred-display,.star-icon{grid-column:4}"
+              + ".team-home{grid-column:3}.team-away{grid-column:5;flex-direction:row-reverse}.team-away.team-form-mode{flex-direction:row}"
+              + ".score-form,.match-score,.idle-msg,.pred-display,.star-icon{grid-column:4}"
+              + ".team-form{display:contents}.team-form .btn-predict{grid-column:4;justify-self:center}"
              + ".match-status{grid-column:5;justify-self:end}}"
                 + "@media(max-width:559.99px){"
                 + ".match-row-main{padding:clamp(6px,1.8vw,10px) clamp(6px,1.8vw,10px);gap:clamp(4px,.5vw,8px)}"
@@ -1146,7 +1203,9 @@ public class HtmlRenderer {
                 + ".vs-badge{display:none}"
                 + ".match-actions{display:flex;align-items:center;justify-content:center;gap:clamp(4px,.5vw,8px);width:100%;flex-wrap:wrap}"
                 + ".match-actions .match-score,.match-actions .pred-display{display:none}"
-                + ".match-row-body .result-dot{justify-content:center}}"
+                + ".match-row-body .result-dot{justify-content:center}"
+                + ".team-form{display:flex;flex-direction:column;align-items:center;gap:clamp(6px,.6vw,10px);width:100%}"
+                + ".team-form .btn-predict{margin-top:clamp(2px,.3vw,4px)}"
             + ".match-row-extras{display:flex;flex-wrap:wrap;align-items:center;gap:clamp(8px,1vw,14px);padding:clamp(10px,1.2vw,14px) clamp(12px,1.5vw,20px) clamp(12px,1.4vw,18px);border-top:1px solid var(--border)}"
             + ".match-time{font-family:var(--font-mono);font-size:clamp(11px,1vw,14px);color:var(--text-dim);text-align:center;white-space:nowrap;font-weight:500;display:flex;flex-direction:column;align-items:center;line-height:1.3;gap:1px}"
             + ".match-d{font-size:clamp(9px,.8vw,11px);font-weight:600;text-transform:uppercase;letter-spacing:.02em}"
