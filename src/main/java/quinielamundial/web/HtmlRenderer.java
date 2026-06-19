@@ -346,8 +346,7 @@ public class HtmlRenderer {
 
         // 7. Away team: flag + name + [score (mobile) or input (form mode)]
         // In form mode, override row-reverse so input appears on the right
-        var awayClass = "team team-away" + (isFormMode ? " team-form-mode" : "");
-        var awayHtml = "<div class='" + awayClass + "'>"
+        var awayHtml = "<div class='team team-away'>"
             + "<span class='flag'>" + flagOf(match.away()) + "</span>"
             + "<span class='team-name'>" + escape(teamEs(match.away())) + "</span>"
             + awayTeamScore;
@@ -1171,41 +1170,26 @@ public class HtmlRenderer {
             + "@media(max-width:899px){.col-side{display:none}}"
 
             // ═══════════════════════════════════════
-            //  MATCH ROWS — compact grid layout
+            //  MATCH ROWS — compact list layout (mobile-style, all sizes)
             // ═══════════════════════════════════════
             + ".matches{display:flex;flex-direction:column;gap:clamp(10px,1.2vw,16px)}"
             + ".match-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:all .25s cubic-bezier(.4,0,.2,1);box-shadow:var(--shadow-sm);position:relative}"
             + ".match-row::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--gradient);border-radius:3px 0 0 3px;opacity:.6}"
             + ".match-row:hover{border-color:var(--border-light);transform:translateY(-2px);box-shadow:var(--shadow-md)}"
-            + ".match-row-main{display:flex;flex-direction:column;gap:clamp(6px,.8vw,10px);padding:clamp(12px,1.5vw,18px) clamp(12px,1.5vw,20px)}"
+            + ".match-row-main{display:flex;flex-direction:column;gap:clamp(4px,.5vw,8px);padding:clamp(6px,1.8vw,10px) clamp(6px,1.8vw,10px)}"
             + ".match-row-top{display:flex;align-items:center;gap:clamp(6px,.7vw,10px)}"
-            + ".match-row-body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:clamp(6px,.8vw,12px)}"
-            // Score: always compact & centered between team names
+            + ".match-row-body{display:flex;flex-direction:column;gap:clamp(4px,.6vw,8px)}"
+            + ".match-teams{display:flex;flex-direction:column;gap:clamp(2px,.3vw,5px)}"
+            // Score display (centered) — hidden behind team-score layout
             + ".match-score,.pred-display{display:inline-flex;align-items:center;gap:clamp(2px,.3vw,6px);font-family:var(--font-mono);font-size:clamp(16px,1.6vw,22px);font-weight:700;color:var(--text);letter-spacing:-.03em}"
-            // Team score inside each team row (hidden by default, shown on mobile)
-            + ".team-score{display:none}"
-            + "@media(min-width:560px){"
-             + ".match-row-main{display:grid;grid-template-columns:44px 28px 1fr auto 1fr;gap:clamp(6px,.8vw,12px)}"
-             + ".match-row-top,.match-row-body,.match-teams,.match-actions{display:contents}"
-             + ".vs-badge{display:none}"
-              + ".team-home{grid-column:3}.team-away{grid-column:5;flex-direction:row-reverse}.team-away.team-form-mode{flex-direction:row}"
-              + ".score-form,.match-score,.idle-msg,.pred-display,.star-icon{grid-column:4}"
-              + ".team-form{display:contents}.team-form .btn-predict{grid-column:4;justify-self:center}"
-             + ".match-status{grid-column:5;justify-self:end}}"
-                + "@media(max-width:559.99px){"
-                + ".match-row-main{padding:clamp(6px,1.8vw,10px) clamp(6px,1.8vw,10px);gap:clamp(4px,.5vw,8px)}"
-                + ".match-row-body{display:flex;flex-direction:column;gap:clamp(4px,.6vw,8px)}"
-                + ".match-teams{display:flex;flex-direction:column;gap:clamp(2px,.3vw,5px)}"
-                + ".match-row-body .team-home,.match-row-body .team-away{display:flex;align-items:center;gap:clamp(6px,.8vw,10px);justify-content:flex-start;text-align:left;width:100%;flex-direction:row}"
-                + ".match-row-body .team-score{display:inline-block;font-family:var(--font-mono);font-size:clamp(18px,4.5vw,26px);font-weight:700;color:var(--text);margin-left:auto;flex-shrink:0;line-height:1}"
-                + ".match-row-body .team-name{font-size:clamp(14px,3.8vw,17px);white-space:normal;overflow:visible}"
-                + ".match-row-body .flag{font-size:clamp(18px,4.5vw,22px)}"
-                + ".vs-badge{display:none}"
-                + ".match-actions{display:flex;align-items:center;justify-content:center;gap:clamp(4px,.5vw,8px);width:100%;flex-wrap:wrap}"
-                + ".match-actions .match-score,.match-actions .pred-display{display:none}"
-                + ".match-row-body .result-dot{justify-content:center}"
-                + ".team-form{display:flex;flex-direction:column;align-items:center;gap:clamp(6px,.6vw,10px);width:100%}"
-                + ".team-form .btn-predict{margin-top:clamp(2px,.3vw,4px)}"
+            // Team score inside each team row — always visible
+            + ".team-score{display:inline-block;font-family:var(--font-mono);font-size:clamp(18px,4.5vw,26px);font-weight:700;color:var(--text);margin-left:auto;flex-shrink:0;line-height:1}"
+            + ".vs-badge{display:none}"
+            + ".match-actions{display:flex;align-items:center;justify-content:center;gap:clamp(4px,.5vw,8px);width:100%;flex-wrap:wrap}"
+            + ".match-actions .match-score,.match-actions .pred-display{display:none}"
+            + ".team-form{display:flex;flex-direction:column;align-items:center;gap:clamp(6px,.6vw,10px);width:100%}"
+            + ".team-form .btn-predict{margin-top:clamp(2px,.3vw,4px)}"
+            + ".result-dot{justify-content:center}"
             + ".match-row-extras{display:flex;flex-wrap:wrap;align-items:center;gap:clamp(8px,1vw,14px);padding:clamp(10px,1.2vw,14px) clamp(12px,1.5vw,20px) clamp(12px,1.4vw,18px);border-top:1px solid var(--border)}"
             + ".match-time{font-family:var(--font-mono);font-size:clamp(11px,1vw,14px);color:var(--text-dim);text-align:center;white-space:nowrap;font-weight:500;display:flex;flex-direction:column;align-items:center;line-height:1.3;gap:1px}"
             + ".match-d{font-size:clamp(9px,.8vw,11px);font-weight:600;text-transform:uppercase;letter-spacing:.02em}"
@@ -1213,11 +1197,10 @@ public class HtmlRenderer {
             + ".match-h{font-size:clamp(12px,1.1vw,14px);font-weight:600}"
             + ".group-badge{font-size:clamp(8px,.7vw,10px);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-sec);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:clamp(2px,.3vw,4px) clamp(4px,.5vw,8px);text-align:center;flex-shrink:0}"
             + "@media(max-width:420px){.group-badge{display:none}}"
-            + ".team{display:flex;align-items:center;gap:clamp(4px,.6vw,10px);min-width:0;max-width:100%}"
-            + ".team-home{justify-content:flex-end;text-align:right}"
-            + ".team-away{justify-content:flex-start;text-align:left}"
-            + ".flag{font-size:clamp(18px,1.8vw,22px);flex-shrink:0;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}"
-            + ".team-name{font-size:clamp(13px,1.2vw,15px);font-weight:600;color:var(--text);word-break:break-word;overflow-wrap:break-word;hyphens:auto;letter-spacing:-.01em;line-height:1.3}"
+            + ".team{display:flex;align-items:center;gap:clamp(6px,.8vw,10px);min-width:0;max-width:100%;flex-direction:row}"
+            + ".team-home,.team-away{justify-content:flex-start;text-align:left}"
+            + ".flag{font-size:clamp(18px,4.5vw,22px);flex-shrink:0;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}"
+            + ".team-name{font-size:clamp(14px,3.8vw,17px);font-weight:600;color:var(--text);word-break:break-word;overflow-wrap:break-word;hyphens:auto;letter-spacing:-.01em;line-height:1.3;white-space:normal;overflow:visible}"
             + ".team-name.muted{color:var(--text-dim);font-style:italic;font-weight:400}"
 
             // Score form (inline, compact)
