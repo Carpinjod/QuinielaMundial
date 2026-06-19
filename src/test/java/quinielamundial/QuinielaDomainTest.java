@@ -16,6 +16,7 @@ class QuinielaDomainTest {
     void scoringRules() {
         var service = new QuinielaService();
         var group = service.createGroup("Grupo", "Ana");
+        TestUtils.setFutureKickoffs(group);
         var ana = group.creator();
         var matches = group.matches();
 
@@ -64,6 +65,7 @@ class QuinielaDomainTest {
     void rankingTiebreaks() {
         var service = new QuinielaService();
         var group = service.createGroup("Grupo", "Ana");
+        TestUtils.setFutureKickoffs(group);
         var ana = group.creator();
         var luis = group.join("Luis");
         var match = group.matches().get(0);
@@ -82,6 +84,7 @@ class QuinielaDomainTest {
     void joinAndLockRules() {
         var service = new QuinielaService();
         var group = service.createGroup("Grupo", "Ana");
+        TestUtils.setFutureKickoffs(group);
         var ana = group.creator();
         assertEquals(group.code(), service.joinGroup(group.code(), "Luis").code());
 
@@ -106,6 +109,7 @@ class QuinielaDomainTest {
     void visibilityAndLockRules() {
         var service = new QuinielaService();
         var group = service.createGroup("Grupo", "Ana");
+        TestUtils.setFutureKickoffs(group);
         var ana = group.creator();
         var luis = group.join("Luis");
         var match = group.matches().get(0);

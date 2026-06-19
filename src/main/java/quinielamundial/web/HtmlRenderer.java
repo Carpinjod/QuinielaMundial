@@ -203,7 +203,6 @@ public class HtmlRenderer {
 
                 var pending = member == null ? 0 : (int) jMatches.stream().filter(m -> !m.isStarted()).count();
                 var finished = (int) jMatches.stream().filter(Match::finished).count();
-
                 accordion.append("<details class='jor-section'")
                     .append(j == expandedJornada ? " open" : "")
                     .append(">")
@@ -236,7 +235,8 @@ public class HtmlRenderer {
             : championForm(group, member, candidates, tournamentStarted, selectedJornada, championTeam);
         var championAdmin = isCreator ? championResultForm(group.code(), candidates, selectedJornada, member.token()) : "";
         var adminReset = isCreator ? adminResetSection(group, member, selectedJornada) : "";
-        var sideContent = leaderboard + championSection + championAdmin + adminReset;
+        var leaveSection = member != null && !isCreator ? leaveGroupSection(group, member, selectedJornada) : "";
+        var sideContent = leaderboard + championSection + championAdmin + adminReset + leaveSection;
 
         // ── Drawer (mobile) + FAB ──
         var drawerHtml = "";
@@ -289,7 +289,10 @@ public class HtmlRenderer {
         var memberPrediction = member == null ? null : member.predictions().get(match.id());
         var starSelected = member != null && member.starByJornada().getOrDefault(match.jornada(), -1) == match.id();
         var jornadaIdx = match.jornada();
-        var jornadaLocked = !match.knockout() && group.matches().stream().anyMatch(m -> m.jornada() == jornadaIdx && m.isStarted());
+        // Star is locked only if the user already chose a star match AND that specific match has started
+        var starLocked = member != null
+            && member.starByJornada().containsKey(jornadaIdx)
+            && group.matchById(member.starByJornada().get(jornadaIdx)).isStarted();
 
         // ═══ Grid columns: time | group | home | score/form | away | badge ═══
 
@@ -299,57 +302,70 @@ public class HtmlRenderer {
         // 2. Group badge (A–L)
         var groupHtml = "<div class='group-badge'>" + groupLetter(match.id()) + "</div>";
 
-        // 3. Home team with flag (right-aligned)
+        // 3. Team scores for mobile compact list (inside each .team row)
+        String homeTeamScore = "", awayTeamScore = "";
+        if (finished) {
+            homeTeamScore = "<span class='team-score'>" + match.homeGoals() + "</span>";
+            awayTeamScore = "<span class='team-score'>" + match.awayGoals() + "</span>";
+        } else if (started && memberPrediction != null) {
+            homeTeamScore = "<span class='team-score'>" + memberPrediction.homeGoals() + "</span>";
+            awayTeamScore = "<span class='team-score'>" + memberPrediction.awayGoals() + "</span>";
+        }
+
+        // 4. Home team: flag + name + score (score visible on mobile only)
         var homeHtml = "<div class='team team-home'>"
             + "<span class='flag'>" + flagOf(match.home()) + "</span>"
             + "<span class='team-name'>" + escape(teamEs(match.home())) + "</span>"
+            + homeTeamScore
             + "</div>";
 
-        // 4. Score area (inputs + button, or score display)
+        // 5. Score area (inputs + button, or score display)
+        var starBadge = starSelected ? "<span class='star-icon'>⭐</span>" : "";
         var scoreHtml = "";
         if (finished) {
-            scoreHtml = "<div class='match-score'><span class='score-display'>" + match.homeGoals() + "–" + match.awayGoals() + "</span></div>";
+            scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span></div>";
         } else if (member == null) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (started) {
             scoreHtml = memberPrediction == null
                 ? "<span class='idle-msg'>🔴</span>"
-                : "<span class='pred-display'>" + memberPrediction.homeGoals() + "–" + memberPrediction.awayGoals() + "</span>";
+                : "<span class='pred-display'><span class='score-home'>" + memberPrediction.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + memberPrediction.awayGoals() + "</span></span>";
         } else {
             scoreHtml = predictionForm(group, match, member, memberPrediction, selectedJornada);
         }
 
-        // 5. Away team with flag (left-aligned)
+        // 6. Away team: flag + name + score (score visible on mobile only, row-reverse on desktop)
         var awayHtml = "<div class='team team-away'>"
-            + "<span class='team-name'>" + escape(teamEs(match.away())) + "</span>"
             + "<span class='flag'>" + flagOf(match.away()) + "</span>"
+            + "<span class='team-name'>" + escape(teamEs(match.away())) + "</span>"
+            + awayTeamScore
             + "</div>";
 
-        // 6. Status / result badge (rightmost column)
+        // 7. Status / result badge (rightmost column)
         var statusHtml = "";
         if (finished) {
-            statusHtml = "<div>" + predictionResultBadge(match, memberPrediction, starSelected) + "</div>";
+            statusHtml = "<div class='match-status'>" + predictionResultBadge(match, memberPrediction, starSelected, group) + "</div>";
         } else if (started) {
             statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
         }
 
         var mainRow = "<div class='match-row-main'>"
             + "<div class='match-row-top'>" + timeHtml + groupHtml + "</div>"
-            + "<div class='match-row-body'>" + homeHtml + scoreHtml + awayHtml + statusHtml + "</div>"
+            + "<div class='match-row-body'>"
+            + "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>"
+            + "<div class='match-actions'>" + scoreHtml + statusHtml + starBadge + "</div>"
+            + "</div>"
             + "</div>";
 
         // ═══ Extras row (star, admin result, predictions toggle) ═══
         var extras = new StringBuilder();
-        if (member != null && !jornadaLocked) {
+        if (member != null && !match.knockout() && !match.isStarted() && !starLocked) {
             var label = starSelected ? "⭐ Quitar estrella" : "⭐ Marcar estrella";
             extras.append("<form method='post' action='/groups/").append(escape(group.code())).append("/star' class='star-form'>")
                 .append(hiddenToken(member.token())).append(hiddenJornada(selectedJornada))
                 .append("<input type='hidden' name='jornada' value='").append(match.jornada()).append("'>")
                 .append("<input type='hidden' name='matchId' value='").append(match.id()).append("'>")
                 .append("<button type='submit' class='btn-star ").append(starSelected ? "active" : "").append("'>").append(label).append("</button></form>");
-        }
-        if (isCreator) {
-            extras.append(resultForm(group, match, tournamentStarted, selectedJornada));
         }
         extras.append(predictionsToggle(group, match, member, started));
 
@@ -456,7 +472,17 @@ public class HtmlRenderer {
         };
         var groupHtml = "<div class='group-badge'>" + roundLabel + "</div>";
 
-        // 3. Home team
+        // 3. Team scores for mobile compact list
+        String homeTeamScore = "", awayTeamScore = "";
+        if (teamsKnown && finished) {
+            homeTeamScore = "<span class='team-score'>" + match.homeGoals() + "</span>";
+            awayTeamScore = "<span class='team-score'>" + match.awayGoals() + "</span>";
+        } else if (teamsKnown && started && memberPrediction != null) {
+            homeTeamScore = "<span class='team-score'>" + memberPrediction.homeGoals() + "</span>";
+            awayTeamScore = "<span class='team-score'>" + memberPrediction.awayGoals() + "</span>";
+        }
+
+        // 4. Home team
         String homeHtml;
         if (!teamsKnown && (match.home() == null || match.away() == null)) {
             var label = matchSourceLabel(match.id());
@@ -465,34 +491,36 @@ public class HtmlRenderer {
             homeHtml = "<div class='team team-home'>"
                 + "<span class='flag'>" + flagOf(match.home()) + "</span>"
                 + "<span class='team-name'>" + escape(teamEs(match.home())) + "</span>"
+                + homeTeamScore
                 + "</div>";
         }
 
-        // 4. Score area
+        // 5. Score area
         var scoreHtml = "";
         if (!teamsKnown) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (finished) {
-            scoreHtml = "<div class='match-score'><span class='score-display'>" + match.homeGoals() + "–" + match.awayGoals() + "</span></div>";
+            scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span></div>";
         } else if (member == null) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (started) {
             scoreHtml = memberPrediction == null
                 ? "<span class='idle-msg'>🔴</span>"
-                : "<span class='pred-display'>" + memberPrediction.homeGoals() + "–" + memberPrediction.awayGoals() + "</span>";
+                : "<span class='pred-display'><span class='score-home'>" + memberPrediction.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + memberPrediction.awayGoals() + "</span></span>";
         } else {
             scoreHtml = knockoutPredictionForm(group, match, member, memberPrediction);
         }
 
-        // 5. Away team
+        // 6. Away team
         String awayHtml;
         if (!teamsKnown && (match.home() == null || match.away() == null)) {
             var label = matchSourceLabel(match.id());
             awayHtml = "<div class='team team-away'><span class='team-name muted'>" + escape(label[1]) + "</span></div>";
         } else {
             awayHtml = "<div class='team team-away'>"
-                + "<span class='team-name'>" + escape(teamEs(match.away())) + "</span>"
                 + "<span class='flag'>" + flagOf(match.away()) + "</span>"
+                + "<span class='team-name'>" + escape(teamEs(match.away())) + "</span>"
+                + awayTeamScore
                 + "</div>";
         }
 
@@ -501,21 +529,21 @@ public class HtmlRenderer {
         if (!teamsKnown) {
             statusHtml = "<div class='match-status locked'>🔒</div>";
         } else if (finished) {
-            statusHtml = "<div>" + predictionResultBadge(match, memberPrediction, false) + "</div>";
+            statusHtml = "<div class='match-status'>" + predictionResultBadge(match, memberPrediction, false, group) + "</div>";
         } else if (started) {
             statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
         }
 
         var mainRow = "<div class='match-row-main'>"
             + "<div class='match-row-top'>" + timeHtml + groupHtml + "</div>"
-            + "<div class='match-row-body'>" + homeHtml + scoreHtml + awayHtml + statusHtml + "</div>"
+            + "<div class='match-row-body'>"
+            + "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>"
+            + "<div class='match-actions'>" + scoreHtml + statusHtml + "</div>"
+            + "</div>"
             + "</div>";
 
         // ═══ Extras ═══
         var extras = new StringBuilder();
-        if (isCreator && teamsKnown) {
-            extras.append(knockoutResultForm(group, match, member));
-        }
         extras.append(predictionsToggle(group, match, member, started));
 
         var extrasStr = extras.toString();
@@ -564,22 +592,6 @@ public class HtmlRenderer {
             + "</form>";
     }
 
-    private String knockoutResultForm(Group group, Match match, Member member) {
-        var home = match.homeGoals() == null ? "" : String.valueOf(match.homeGoals());
-        var away = match.awayGoals() == null ? "" : String.valueOf(match.awayGoals());
-        var hasResult = match.finished();
-        var confirmAttr = hasResult ? " data-confirm=\"¿Sobrescribir el resultado " + home + "–" + away + "?\"" : " data-confirm=\"¿Registrar este resultado? Una vez guardado, se calcularán los puntos.\"";
-        return "<div class='result-admin'><form method='post' action='/groups/" + group.code() + "/result'" + confirmAttr + ">"
-            + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
-            + "<input type='hidden' name='jornada' value='0'>"
-            + "<input type='hidden' name='token' value='" + escape(member.token()) + "'>"
-            + "<span class='admin-label'>Resultado:</span>"
-            + "<input name='homeGoals' type='number' min='0' class='score-input-sm' value='" + home + "' placeholder='0'>"
-            + "<span class='score-sep'>–</span>"
-            + "<input name='awayGoals' type='number' min='0' class='score-input-sm' value='" + away + "' placeholder='0'>"
-            + "<button type='submit' class='btn-admin'>Guardar</button>"
-            + "</form></div>";
-    }
 
     // ── Forms ──
     private String championForm(Group group, Member member, List<String> candidates, boolean tournamentStarted, int selectedJornada, String championTeam) {
@@ -591,22 +603,6 @@ public class HtmlRenderer {
             + hiddenToken(member.token()) + hiddenJornada(selectedJornada)
             + "<select name='team' " + disabled + ">" + options + "</select>"
             + "<button type='submit' " + disabled + ">Guardar</button>"
-            + "</form></div>";
-    }
-
-    private String resultForm(Group group, Match match, boolean tournamentStarted, int selectedJornada) {
-        var home = match.homeGoals() == null ? "" : String.valueOf(match.homeGoals());
-        var away = match.awayGoals() == null ? "" : String.valueOf(match.awayGoals());
-        var hasResult = match.finished();
-        var confirmAttr = hasResult ? " data-confirm=\"¿Sobrescribir el resultado " + home + "–" + away + "?\"" : " data-confirm=\"¿Registrar este resultado? Una vez guardado, se calcularán los puntos.\"";
-        return "<div class='result-admin'><form method='post' action='/groups/" + group.code() + "/result'" + confirmAttr + ">"
-            + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
-            + hiddenJornada(selectedJornada)
-            + "<span class='admin-label'>Resultado:</span>"
-            + "<input name='homeGoals' type='number' min='0' class='score-input-sm' value='" + home + "' placeholder='0'>"
-            + "<span class='score-sep'>–</span>"
-            + "<input name='awayGoals' type='number' min='0' class='score-input-sm' value='" + away + "' placeholder='0'>"
-            + "<button type='submit' class='btn-admin'>Guardar</button>"
             + "</form></div>";
     }
 
@@ -650,6 +646,17 @@ public class HtmlRenderer {
         if (members.isEmpty()) return "";
         return "<div class='card'><h2>🔑 Administrar miembros</h2>"
             + "<ul style='list-style:none;padding:0;margin:0'>" + members + "</ul></div>";
+    }
+
+    // ── Leave group ──
+    private String leaveGroupSection(Group group, Member member, int selectedJornada) {
+        return "<div class='card' style='text-align:center;padding:16px'>"
+            + "<form method='post' action='/groups/" + escape(group.code()) + "/leave'"
+            + " onsubmit=\"return confirmAction('¿Salir del grupo " + escape(group.name()) + "? Se borrarán TODOS tus pronósticos. No se puede deshacer.')\">"
+            + "<input type='hidden' name='token' value='" + escape(member.token()) + "'>"
+            + "<input type='hidden' name='jornada' value='" + selectedJornada + "'>"
+            + "<button type='submit' style='background:var(--red);box-shadow:none;width:100%'>🚪 Salir del grupo</button>"
+            + "</form></div>";
     }
 
     // ── Leaderboard ──
@@ -834,9 +841,28 @@ public class HtmlRenderer {
      *  Shows actual points earned, including the star-match multiplier (×2 for group stage).
      *  Returns e.g. "🎯 +6 ⭐" (exact + star), "🎯 +3" (exact), "✅ +2 ⭐" (winner + star),
      *  "✅ +1" (winner), "❌ +0" (wrong), or "—" (no prediction). */
-    private String predictionResultBadge(Match match, quinielamundial.domain.Prediction prediction, boolean starMatch) {
+    private String predictionResultBadge(Match match, quinielamundial.domain.Prediction prediction, boolean starMatch, Group group) {
         if (!match.finished()) return "";
-        if (prediction == null) return "<span class='result-dot dot-none'>—</span>";
+        // Group comparison: how many members got this match right
+        var vsGroup = "";
+        if (group != null) {
+            var actual = match.result();
+            var total = (int) group.members().values().stream()
+                .filter(m -> m.predictions().containsKey(match.id()))
+                .count();
+            var hits = total == 0 ? 0 : (int) group.members().values().stream()
+                .filter(m -> {
+                    var p = m.predictions().get(match.id());
+                    if (p == null || actual == null) return false;
+                    return (p.homeGoals() == match.homeGoals() && p.awayGoals() == match.awayGoals())
+                        || p.outcome().equals(actual);
+                })
+                .count();
+            if (total > 0) {
+                vsGroup = " <span class='dot-vs'>" + hits + "/" + total + "</span>";
+            }
+        }
+        if (prediction == null) return "<span class='result-dot dot-none'>—" + vsGroup + "</span>";
         var actual = match.result();
         if (actual == null) return "<span class='result-dot dot-none'>—</span>";
         String icon, label;
@@ -850,15 +876,32 @@ public class HtmlRenderer {
         }
         var pts = starMatch ? base * 2 : base;
         var starIcon = starMatch && base > 0 ? " ⭐" : "";
-        var titleAttr = label + (starMatch && base > 0 ? " ⭐" : "");
-        return "<span class='result-dot dot-" + (base == 3 ? "exact" : base == 1 ? "winner" : "wrong") + "' title='" + titleAttr + "'>" + icon + " +" + pts + starIcon + "</span>";
+        return "<span class='result-dot dot-" + (base == 3 ? "exact" : base == 1 ? "winner" : "wrong") + "'>" + icon + " +" + pts + starIcon + vsGroup + "</span>";
     }
 
-    /** Find the "current" jornada — the latest one with any match in progress (started but not finished). */
+    /**
+     * Determina la jornada que debe aparecer expandida por defecto:
+     * 1. Si hay jornadas con partidos en curso (empezados pero no terminados) → la de mayor número.
+     * 2. Si no hay en curso pero hay pendientes → la siguiente jornada a jugar (la de menor número con partidos pendientes).
+     * 3. Si todas están finalizadas → la última jornada (Jornada 3).
+     * 4. Si nada ha empezado → Jornada 1 (cae en el caso 2, la primera con pendientes es la 1).
+     */
     private int currentJornada(Group group) {
         var now = Instant.now();
-        return group.matches().stream()
+        // 1. Jornada en curso: partidos empezados pero no terminados
+        var inProgress = group.matches().stream()
             .filter(m -> !m.finished() && m.kickoff().isBefore(now))
+            .mapToInt(Match::jornada)
+            .max();
+        if (inProgress.isPresent()) return inProgress.getAsInt();
+        // 2. Próxima jornada con partidos pendientes (no han empezado aún)
+        var upcoming = group.matches().stream()
+            .filter(m -> !m.finished() && m.kickoff().isAfter(now))
+            .mapToInt(Match::jornada)
+            .min();
+        if (upcoming.isPresent()) return upcoming.getAsInt();
+        // 3. Todo terminado → última jornada
+        return group.matches().stream()
             .mapToInt(Match::jornada)
             .max()
             .orElse(1);
@@ -897,25 +940,43 @@ public class HtmlRenderer {
             // ═══════════════════════════════════════
             //  DESIGN TOKENS
             // ═══════════════════════════════════════
-            + ":root{"
-            + "--bg:#0B1020;--surface:#131A2E;--surface-hover:#1A2240;--surface-alt:#0E1528"
-            + ";--surface2:#1A2240"
-            + ";--border:#1E2A45;--border-light:#2A3A5A"
-            + ";--text:#F0F4FF;--text-sec:#8899BB;--text-mid:#8899BB;--text-dim:#5A6A8A"
-            + ";--pri:#00D4FF;--pri-hover:#33DDFF;--pri-light:rgba(0,212,255,.12)"
-            + ";--accent:#7C3AED;--accent-light:rgba(124,58,237,.12)"
-            + ";--green:#10B981;--green-dim:#0A2E1A;--green-light:rgba(16,185,129,.10);--green-border:rgba(16,185,129,.25)"
-            + ";--red:#EF4444;--red-light:rgba(239,68,68,.10);--red-border:rgba(239,68,68,.2)"
-            + ";--yellow:#F59E0B;--yellow-light:rgba(245,158,11,.10);--yellow-border:rgba(245,158,11,.2)"
-            + ";--gold:#F59E0B;--silver:#6A7A9A;--bronze:#B45309"
-            + ";--radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:20px"
-            + ";--gradient:linear-gradient(135deg,#00D4FF,#7C3AED)"
-            + ";--gradient-glow:0 0 24px rgba(0,212,255,.12),0 0 48px rgba(124,58,237,.08)"
-            + ";--shadow-sm:0 2px 8px rgba(0,0,0,.25)"
-            + ";--shadow-md:0 8px 24px rgba(0,0,0,.3)"
-            + ";--shadow-lg:0 16px 48px rgba(0,0,0,.35)"
-            + ";--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif"
-            + ";--font-mono:'JetBrains Mono','Fira Code','Courier New',monospace}"
+             + ":root{"
+             + "--bg:#0B1020;--surface:#131A2E;--surface-hover:#1A2240;--surface-alt:#0E1528"
+             + ";--surface2:#1A2240"
+             + ";--border:#1E2A45;--border-light:#2A3A5A"
+             + ";--text:#F0F4FF;--text-sec:#8899BB;--text-mid:#8899BB;--text-dim:#5A6A8A"
+             + ";--pri:#00D4FF;--pri-hover:#33DDFF;--pri-light:rgba(0,212,255,.12)"
+             + ";--accent:#7C3AED;--accent-light:rgba(124,58,237,.12)"
+             + ";--green:#10B981;--green-dim:#0A2E1A;--green-light:rgba(16,185,129,.10);--green-border:rgba(16,185,129,.25)"
+             + ";--red:#EF4444;--red-light:rgba(239,68,68,.10);--red-border:rgba(239,68,68,.2)"
+             + ";--yellow:#F59E0B;--yellow-light:rgba(245,158,11,.10);--yellow-border:rgba(245,158,11,.2)"
+             + ";--gold:#F59E0B;--silver:#6A7A9A;--bronze:#B45309"
+             + ";--radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:20px"
+             + ";--gradient:linear-gradient(135deg,#00D4FF,#7C3AED)"
+             + ";--gradient-glow:0 0 24px rgba(0,212,255,.12),0 0 48px rgba(124,58,237,.08)"
+             + ";--shadow-sm:0 2px 8px rgba(0,0,0,.25)"
+             + ";--shadow-md:0 8px 24px rgba(0,0,0,.3)"
+             + ";--shadow-lg:0 16px 48px rgba(0,0,0,.35)"
+             + ";--header-bg:rgba(11,16,32,.92)"
+             + ";--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif"
+             + ";--font-mono:'JetBrains Mono','Fira Code','Courier New',monospace}"
+             + "[data-theme=light]{"
+             + "--bg:#F2F4F8;--surface:#FFFFFF;--surface-hover:#EDEEF2;--surface-alt:#F0F1F5"
+             + ";--surface2:#F0F1F5"
+             + ";--border:#DDE1E9;--border-light:#CBD0DA"
+             + ";--text:#0B1020;--text-sec:#5A6A8A;--text-mid:#5A6A8A;--text-dim:#8899BB"
+             + ";--pri:#009DC4;--pri-hover:#007A9E;--pri-light:rgba(0,157,196,.10)"
+             + ";--accent:#6D28D9;--accent-light:rgba(109,40,217,.10)"
+             + ";--green:#059669;--green-dim:#D1FAE5;--green-light:rgba(5,150,105,.08);--green-border:rgba(5,150,105,.2)"
+             + ";--red:#DC2626;--red-light:rgba(220,38,38,.08);--red-border:rgba(220,38,38,.2)"
+             + ";--yellow:#D97706;--yellow-light:rgba(217,119,6,.08);--yellow-border:rgba(217,119,6,.2)"
+             + ";--gold:#D97706;--silver:#5A6A8A;--bronze:#92400E"
+             + ";--gradient:linear-gradient(135deg,#009DC4,#6D28D9)"
+             + ";--gradient-glow:none"
+             + ";--shadow-sm:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04)"
+             + ";--shadow-md:0 4px 12px rgba(0,0,0,.07),0 2px 4px rgba(0,0,0,.04)"
+             + ";--shadow-lg:0 8px 24px rgba(0,0,0,.08),0 4px 8px rgba(0,0,0,.04)"
+             + ";--header-bg:rgba(242,244,248,.92)}"
 
             // ═══════════════════════════════════════
             //  BASE
@@ -958,7 +1019,7 @@ public class HtmlRenderer {
             // ═══════════════════════════════════════
             //  HEADER
             // ═══════════════════════════════════════
-            + ".site-header{position:sticky;top:0;z-index:100;background:rgba(11,16,32,.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 max(12px,2vw);display:flex;align-items:center;justify-content:space-between}"
+            + ".site-header{position:sticky;top:0;z-index:100;background:var(--header-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 max(12px,2vw);display:flex;align-items:center;justify-content:space-between}"
             + ".header-inner{max-width:min(1120px,100% - 1rem);margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:clamp(52px,6vh,64px)}"
             + ".header-logo{display:flex;align-items:center;gap:clamp(8px,1vw,14px);font-size:clamp(15px,1.5vw,20px);font-weight:800;color:var(--text);text-decoration:none;letter-spacing:-.03em;background:var(--gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}"
             + ".header-logo:hover{opacity:.9;text-decoration:none}"
@@ -1063,12 +1124,29 @@ public class HtmlRenderer {
             + ".match-row-main{display:flex;flex-direction:column;gap:clamp(6px,.8vw,10px);padding:clamp(12px,1.5vw,18px) clamp(12px,1.5vw,20px)}"
             + ".match-row-top{display:flex;align-items:center;gap:clamp(6px,.7vw,10px)}"
             + ".match-row-body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:clamp(6px,.8vw,12px)}"
+            // Score: always compact & centered between team names
+            + ".match-score,.pred-display{display:inline-flex;align-items:center;gap:clamp(2px,.3vw,6px);font-family:var(--font-mono);font-size:clamp(16px,1.6vw,22px);font-weight:700;color:var(--text);letter-spacing:-.03em}"
+            // Team score inside each team row (hidden by default, shown on mobile)
+            + ".team-score{display:none}"
             + "@media(min-width:560px){"
-            + ".match-row-main{display:grid;grid-template-columns:44px 28px 1fr auto 1fr;gap:clamp(6px,.8vw,12px)}"
-            + ".match-row-top,.match-row-body{display:contents}}"
-            + "@media(max-width:559.99px){"
-            + ".match-row-body .match-status{grid-column:1/-1;text-align:center;padding-top:4px}"
-            + ".match-row-body .result-dot{justify-content:center}}"
+             + ".match-row-main{display:grid;grid-template-columns:44px 28px 1fr auto 1fr;gap:clamp(6px,.8vw,12px)}"
+             + ".match-row-top,.match-row-body,.match-teams,.match-actions{display:contents}"
+             + ".vs-badge{display:none}"
+              + ".team-home{grid-column:3}.team-away{grid-column:5;flex-direction:row-reverse}"
+             + ".score-form,.match-score,.idle-msg,.pred-display,.star-icon{grid-column:4}"
+             + ".match-status{grid-column:5;justify-self:end}}"
+                + "@media(max-width:559.99px){"
+                + ".match-row-main{padding:clamp(6px,1.8vw,10px) clamp(6px,1.8vw,10px);gap:clamp(4px,.5vw,8px)}"
+                + ".match-row-body{display:flex;flex-direction:column;gap:clamp(4px,.6vw,8px)}"
+                + ".match-teams{display:flex;flex-direction:column;gap:clamp(2px,.3vw,5px)}"
+                + ".match-row-body .team-home,.match-row-body .team-away{display:flex;align-items:center;gap:clamp(6px,.8vw,10px);justify-content:flex-start;text-align:left;width:100%;flex-direction:row}"
+                + ".match-row-body .team-score{display:inline-block;font-family:var(--font-mono);font-size:clamp(18px,4.5vw,26px);font-weight:700;color:var(--text);margin-left:auto;flex-shrink:0;line-height:1}"
+                + ".match-row-body .team-name{font-size:clamp(14px,3.8vw,17px);white-space:normal;overflow:visible}"
+                + ".match-row-body .flag{font-size:clamp(18px,4.5vw,22px)}"
+                + ".vs-badge{display:none}"
+                + ".match-actions{display:flex;align-items:center;justify-content:center;gap:clamp(4px,.5vw,8px);width:100%;flex-wrap:wrap}"
+                + ".match-actions .match-score,.match-actions .pred-display{display:none}"
+                + ".match-row-body .result-dot{justify-content:center}}"
             + ".match-row-extras{display:flex;flex-wrap:wrap;align-items:center;gap:clamp(8px,1vw,14px);padding:clamp(10px,1.2vw,14px) clamp(12px,1.5vw,20px) clamp(12px,1.4vw,18px);border-top:1px solid var(--border)}"
             + ".match-time{font-family:var(--font-mono);font-size:clamp(11px,1vw,14px);color:var(--text-dim);text-align:center;white-space:nowrap;font-weight:500;display:flex;flex-direction:column;align-items:center;line-height:1.3;gap:1px}"
             + ".match-d{font-size:clamp(9px,.8vw,11px);font-weight:600;text-transform:uppercase;letter-spacing:.02em}"
@@ -1078,19 +1156,18 @@ public class HtmlRenderer {
             + "@media(max-width:420px){.group-badge{display:none}}"
             + ".team{display:flex;align-items:center;gap:clamp(4px,.6vw,10px);min-width:0;max-width:100%}"
             + ".team-home{justify-content:flex-end;text-align:right}"
-            + ".team-away{flex-direction:row-reverse;justify-content:flex-start;text-align:left}"
+            + ".team-away{justify-content:flex-start;text-align:left}"
             + ".flag{font-size:clamp(18px,1.8vw,22px);flex-shrink:0;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}"
             + ".team-name{font-size:clamp(13px,1.2vw,15px);font-weight:600;color:var(--text);word-break:break-word;overflow-wrap:break-word;hyphens:auto;letter-spacing:-.01em;line-height:1.3}"
             + ".team-name.muted{color:var(--text-dim);font-style:italic;font-weight:400}"
-            + ".match-score{display:flex;align-items:center;justify-content:center;gap:clamp(3px,.4vw,6px)}"
-            + ".score-display{font-family:var(--font-mono);font-size:clamp(16px,1.6vw,22px);font-weight:700;color:var(--text);min-width:clamp(40px,5vw,56px);text-align:center;letter-spacing:-.03em}"
 
             // Score form (inline, compact)
             + ".score-form{display:flex;align-items:center;gap:clamp(4px,.5vw,8px);flex-wrap:wrap;justify-content:center}"
             + ".score-inputs{display:flex;align-items:center;gap:3px}"
             + ".score-input{width:clamp(32px,3.2vw,40px);height:clamp(34px,3.2vw,40px);text-align:center;font-size:clamp(15px,1.4vw,18px);font-weight:700;padding:2px;border-radius:var(--radius-sm);background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);-moz-appearance:textfield;appearance:textfield;transition:all .2s ease}"
             + ".score-input::-webkit-inner-spin-button,.score-input::-webkit-outer-spin-button{display:none}"
-            + ".score-input:focus{border-color:var(--pri);background:rgba(0,212,255,.05);box-shadow:0 0 0 3px var(--pri-light)}"
+                         + ".score-input:focus{border-color:var(--pri);background:rgba(0,212,255,.05);box-shadow:0 0 0 3px var(--pri-light)}"
+             + ".score-input.saved{animation:flashGreen .6s ease-out}"
             + ".score-sep{color:var(--text-dim);font-family:var(--font-mono);font-size:clamp(13px,1.2vw,16px);font-weight:600}"
             + ".btn-predict{font-size:clamp(11px,1vw,13px);padding:clamp(5px,.6vw,8px) clamp(10px,1.1vw,16px);border-radius:100px;background:var(--gradient);color:#fff;font-weight:700;border:none;cursor:pointer;white-space:nowrap;transition:all .2s ease;font-family:var(--font);min-height:clamp(32px,3.2vw,40px);box-shadow:0 2px 8px rgba(0,212,255,.2)}"
             + ".btn-predict:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,212,255,.3)}"
@@ -1109,6 +1186,7 @@ public class HtmlRenderer {
             + ".dot-winner{color:var(--yellow)}"
             + ".dot-wrong{color:var(--red);opacity:.7}"
             + ".dot-none{color:var(--text-dim);font-weight:400}"
+             + ".dot-vs{font-size:clamp(9px,.8vw,11px);color:var(--text-dim);font-weight:500;margin-left:4px;opacity:.7;white-space:nowrap}"
 
             // Status badge (finalizado, en vivo, próximo)
             + ".match-status{font-size:clamp(10px,.9vw,12px);font-weight:600;white-space:nowrap;text-align:right;font-family:var(--font-mono)}"
@@ -1126,9 +1204,10 @@ public class HtmlRenderer {
             // Star
             + ".btn-star{font-size:clamp(10px,.9vw,12px);padding:clamp(5px,.6vw,8px) clamp(10px,1.2vw,16px);border-radius:100px;background:transparent;border:1px solid var(--yellow-border);color:var(--yellow);font-weight:600;cursor:pointer;transition:all .2s ease;font-family:var(--font);min-height:clamp(32px,3vw,40px)}"
             + ".btn-star.active{background:rgba(245,158,11,.15);border-color:var(--yellow);color:var(--yellow);box-shadow:0 0 12px rgba(245,158,11,.15)}"
-            + ".btn-star:hover{background:rgba(245,158,11,.1);border-color:var(--yellow)}"
++ ".btn-star:hover{background:rgba(245,158,11,.1);border-color:var(--yellow)}"
+             + ".star-icon{display:inline-flex;font-size:14px;margin-left:4px;vertical-align:middle;color:var(--yellow)}"
 
-            // Predictions toggle
+             // Predictions toggle
             + ".predictions-toggle{font-size:clamp(11px,1vw,13px)}"
             + ".predictions-toggle summary{color:var(--text-dim);cursor:pointer;font-weight:500;padding:clamp(3px,.4vw,6px) 0;transition:color .15s ease}"
             + ".predictions-toggle summary:hover{color:var(--text-sec)}"
@@ -1150,6 +1229,7 @@ public class HtmlRenderer {
             + "@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}"
             + "@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}"
             + "@keyframes glow{0%,100%{box-shadow:0 0 8px rgba(0,212,255,.15)}50%{box-shadow:0 0 20px rgba(0,212,255,.25)}}"
+             + "@keyframes flashGreen{0%{background:rgba(16,185,129,.25);border-color:var(--green)}100%{background:var(--surface2);border-color:var(--border)}}"
 
             // Match row color variants for prediction results
             + ".match-row.correct-exact{border-color:var(--green)!important;background:rgba(16,185,129,.06)!important}"
@@ -1307,9 +1387,8 @@ public class HtmlRenderer {
             + ".jor-pending{color:var(--pri);font-weight:600}"
             + ".jor-matches{padding:clamp(4px,.4vw,8px) clamp(8px,1vw,14px) clamp(8px,1vw,14px)}"
             + ".jor-matches .match-row{margin:0 0 clamp(6px,.7vw,10px)}"
-            + ".jor-matches .match-row:last-child{margin-bottom:0}"
-
-            + ".filter-bar{display:flex;align-items:center;gap:clamp(10px,1.2vw,18px);margin-bottom:clamp(10px,1.2vw,16px);flex-wrap:wrap}"
++ ".jor-matches .match-row:last-child{margin-bottom:0}"
+             + ".filter-bar{display:flex;align-items:center;gap:clamp(10px,1.2vw,18px);margin-bottom:clamp(10px,1.2vw,16px);flex-wrap:wrap}"
             + ".filter-pending{display:inline-flex;align-items:center;gap:clamp(6px,.6vw,10px);cursor:pointer;font-size:clamp(12px,1.1vw,14px);color:var(--text-sec);font-weight:500;padding:clamp(6px,.6vw,10px) clamp(12px,1.4vw,18px);border-radius:100px;background:var(--surface);border:1px solid var(--border);transition:all .2s ease;min-height:44px;user-select:none;-webkit-tap-highlight-color:transparent}"
             + ".filter-pending:hover{border-color:var(--border-light);color:var(--text)}"
             + ".filter-pending input[type=checkbox]{width:18px;height:18px;accent-color:var(--pri);cursor:pointer;margin:0;min-height:auto;flex-shrink:0}"
@@ -1323,7 +1402,7 @@ public class HtmlRenderer {
             + "@keyframes livePulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(34,197,94,.6)}50%{opacity:.7;box-shadow:0 0 0 5px rgba(34,197,94,0)}}"
 
             // Back-to-top button
-            + ".btn-top{position:fixed;bottom:clamp(76px,10vh,96px);right:clamp(16px,2.5vw,28px);width:48px;height:48px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text-sec);font-size:22px;cursor:pointer;z-index:99;box-shadow:0 4px 16px rgba(0,0,0,.3);opacity:0;pointer-events:none;transform:translateY(12px);transition:all .25s ease;display:flex;align-items:center;justify-content:center}"
+            + ".btn-top{position:fixed;bottom:clamp(20px,3vh,32px);left:clamp(16px,2.5vw,28px);width:48px;height:48px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text-sec);font-size:22px;cursor:pointer;z-index:99;box-shadow:0 4px 16px rgba(0,0,0,.3);opacity:0;pointer-events:none;transform:translateY(12px);transition:opacity .25s ease,transform .25s ease;display:flex;align-items:center;justify-content:center}"
             + ".btn-top.visible{opacity:1;pointer-events:auto;transform:translateY(0)}"
             + ".btn-top:hover{background:var(--surface-hover);color:var(--text);border-color:var(--text-dim);transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,.4)}"
             + ".btn-top:active{transform:scale(.95)}"
@@ -1337,7 +1416,7 @@ public class HtmlRenderer {
             // ── Footer ──
             + "<footer class='site-footer'>Quiniela Mundial 2026</footer>"
             // ── Back-to-top button ──
-            + "<button id='btn-top' class='btn-top' onclick='window.scrollTo({top:0,behavior:\"smooth\"})' aria-label='Volver arriba'>⬆</button>"
+            + "<button id='btn-top' class='btn-top' onclick='this.style.opacity=\"0\";this.style.pointerEvents=\"none\";this.classList.remove(\"visible\");window.scrollTo({top:0,behavior:\"smooth\"})' aria-label='Volver arriba'>⬆</button>"
             // ── Scripts ──
             + "<script>"
             + "function showToast(type,msg){var t=document.createElement('div');t.className='toast '+type;t.textContent=msg;var m=document.querySelector('main');if(!m)return;m.insertBefore(t,m.firstChild);setTimeout(function(){t.style.opacity='0';t.style.transform='translateY(-8px)';setTimeout(function(){t.remove()},300)},3500)}"
@@ -1345,11 +1424,13 @@ public class HtmlRenderer {
             + "function toggleDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(!p||!o)return;var open=p.classList.toggle('open');o.classList.toggle('open',open);document.body.style.overflow=open?'hidden':''}"
             + "function closeDrawer(){var p=document.getElementById('drawer-panel'),o=document.getElementById('drawer-overlay');if(p)p.classList.remove('open');if(o)o.classList.remove('open');document.body.style.overflow=''}"
             + "function togglePendingFilter(){var cb=document.getElementById('filterPending');if(!cb)return;var on=cb.checked;var t=0;document.querySelectorAll('.match-wrapper').forEach(function(e){var a=e.getAttribute('data-active')==='true';e.style.display=on&&!a?'none':'';if(a)t++});var i=document.getElementById('filterInfo');if(i)i.textContent=on?'Mostrando '+t+' sin finalizar':''}"
-            + "function liveScores(){var gc=window.location.pathname.split('/')[2];if(!gc)return;try{fetch('/groups/'+gc+'/api/scores').then(function(r){return r.json()}).then(function(d){d.forEach(function(m){var c=document.querySelector('[data-match-id=\"'+m.id+'\"]');if(!c)return;var s=c.querySelector('.score-display,.pred-display');if(s)s.textContent=m.homeGoals+'\u2013'+m.awayGoals;if(m.finished){var st=c.querySelector('.match-status');if(st){st.innerHTML='\u2705';st.className='match-status'}var pl=c.querySelector('.playing');if(pl)pl.classList.remove('playing')}})})['catch'](function(e){})}catch(e){}}if(document.querySelector('[data-match-id]'))setInterval(liveScores,15000);"
-            + "document.addEventListener('submit',async function(e){var f=e.target;if(!f.closest('.group-layout,.group-header'))return;if(f.action.includes('/admin/')||f.action.includes('/logout'))return;e.preventDefault();var msg=f.getAttribute('data-confirm');if(msg&&!confirm(msg))return;var btn=f.querySelector('button[type=submit]');var orig=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Guardando\u2026'}try{var r=await fetch(f.action,{method:'POST',body:new URLSearchParams(new FormData(f)),headers:{'X-Requested-With':'XMLHttpRequest'}});var ct=r.headers.get('Content-Type')||'';if(ct.includes('application/json')){var j=await r.json();if(j.success){if(j.html){var tmp=document.createElement('div');tmp.innerHTML=j.html;var newMain=tmp.querySelector('main');var m=document.querySelector('main');if(m&&newMain){m.innerHTML=newMain.innerHTML}}showToast('success',j.message)}else{showToast('error',j.message);if(btn){btn.disabled=false;btn.textContent=orig}}}else{window.location.reload()}}catch(err){showToast('error','Error de conexi\u00f3n');if(btn){btn.disabled=false;btn.textContent=orig}}})"
+            + "function liveScores(){var gc=window.location.pathname.split('/')[2];if(!gc)return;try{fetch('/groups/'+gc+'/api/scores').then(function(r){return r.json()}).then(function(d){d.forEach(function(m){var c=document.querySelector('[data-match-id=\"'+m.id+'\"]');if(!c)return;var sh=c.querySelector('.score-home');var sa=c.querySelector('.score-away');if(sh)sh.textContent=m.homeGoals;if(sa)sa.textContent=m.awayGoals;if(m.finished){var st=c.querySelector('.match-status.playing');if(st){st.classList.remove('playing');st.textContent='\u2705'}var pl=c.querySelector('.playing');if(pl)pl.classList.remove('playing')}})})['catch'](function(e){})}catch(e){}}if(document.querySelector('[data-match-id]'))setInterval(liveScores,15000);"
+            + "document.addEventListener('submit',async function(e){var f=e.target;if(!f.closest('.group-layout,.group-header'))return;if(f.action.includes('/admin/')||f.action.includes('/logout'))return;e.preventDefault();var msg=f.getAttribute('data-confirm');if(msg&&!confirm(msg))return;var btn=f.querySelector('button[type=submit]');var orig=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Guardando\u2026'}var i=f.querySelector('input[name=matchId]');var d=i?i.value:null;try{var r=await fetch(f.action,{method:'POST',body:new URLSearchParams(new FormData(f)),headers:{'X-Requested-With':'XMLHttpRequest'}});var ct=r.headers.get('Content-Type')||'';if(ct.includes('application/json')){var j=await r.json();if(j.success){if(j.html){var tmp=document.createElement('div');tmp.innerHTML=j.html;var newMain=tmp.querySelector('main');var m=document.querySelector('main');if(m&&newMain){m.innerHTML=newMain.innerHTML;if(d){var c=document.querySelector('[data-match-id=\"'+d+'\"]');if(c){c.querySelectorAll('.score-input').forEach(function(x){x.classList.add('saved');setTimeout(function(){x.classList.remove('saved')},700)})}}}}showToast('success',j.message)}else{showToast('error',j.message);if(btn){btn.disabled=false;btn.textContent=orig}}}else{window.location.reload()}}catch(err){showToast('error','Error de conexi\u00f3n');if(btn){btn.disabled=false;btn.textContent=orig}}})"
              + ";document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer()})"
              + ";(function(){var e=document.querySelector('.jor-section[open]');if(e)setTimeout(function(){e.scrollIntoView({behavior:'smooth',block:'start'})},100)})()"
-             + ";window.addEventListener('scroll',function(){var b=document.getElementById('btn-top');if(!b)return;b.classList.toggle('visible',window.scrollY>window.innerHeight*0.4)})"
++ ";var lastY=window.scrollY;window.addEventListener('scroll',function(){var b=document.getElementById('btn-top');if(!b)return;var dy=window.scrollY-lastY;lastY=window.scrollY;if(window.scrollY>300&&dy>0){b.style.opacity='';b.style.pointerEvents='';b.classList.add('visible')}else{b.classList.remove('visible')}})"
+             + ";function toggleTheme(){var d=document.documentElement;var l=d.getAttribute('data-theme')==='light';d.setAttribute('data-theme',l?'':'light');localStorage.setItem('theme',l?'':'light');var b=document.getElementById('theme-btn');if(b)b.textContent=l?'☀️':'🌙'}"
+             + ";(function(){var t=localStorage.getItem('theme');if(t==='light'){document.documentElement.setAttribute('data-theme','light');var b=document.getElementById('theme-btn');if(b)b.textContent='🌙'}})()"
              + "</script>"
             + "</body></html>";
     }
@@ -1360,12 +1441,14 @@ public class HtmlRenderer {
             return "<a href='/' class='header-logo'><span class='logo-icon'>⚽</span> World Cup 26</a>"
                 + "<nav class='header-nav'>"
                 + "<span class='user-name'>" + escape(loggedInUser) + "</span>"
+                + "<button id='theme-btn' class='header-btn' onclick='toggleTheme()' style='font-size:16px;padding:6px 10px;min-height:36px' aria-label='Cambiar tema'>☀️</button>"
                 + "<a href='/settings' class='header-btn'>Ajustes</a>"
                 + "<a href='/logout' class='header-btn'>Salir</a>"
                 + "</nav>";
         }
         return "<a href='/' class='header-logo'><span class='logo-icon'>⚽</span> World Cup 26</a>"
             + "<nav class='header-nav'>"
+            + "<button id='theme-btn' class='header-btn' onclick='toggleTheme()' style='font-size:16px;padding:6px 10px;min-height:36px' aria-label='Cambiar tema'>☀️</button>"
             + "<a href='/login' class='header-btn'>Entrar</a>"
             + "<a href='/register' class='header-btn primary'>Registrarse</a>"
             + "</nav>";

@@ -212,7 +212,7 @@ public class QuinielaApp {
                 if ("GET".equals(method) && tail.equals(code)) {
                     var member = resolveMember(exchange, group);
                     var jornadaStr = FormData.param(exchange, "jornada");
-                    var selectedJornada = jornadaStr.isBlank() ? 1 : Integer.parseInt(jornadaStr);
+                    var selectedJornada = jornadaStr.isBlank() ? -1 : Integer.parseInt(jornadaStr);
                     var success = FormData.param(exchange, "success");
                     render(exchange, renderer.groupPage(group, member, service.candidates(), service.tournamentChampion(), service.tournamentStarted(), selectedJornada, success.isBlank() ? null : success));
                     return;
@@ -254,6 +254,20 @@ public class QuinielaApp {
                     var j = form.value("jornada", "1");
                     if (isAjaxRequest(exchange)) { ajaxGroupPageResponse(exchange, group, token, j, "Partido estrella actualizado"); return; }
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Partido+estrella+actualizado");
+                    return;
+                }
+
+                if ("POST".equals(method) && tail.equals(code + "/leave")) {
+                    var form = FormData.read(exchange);
+                    var token = form.required("token");
+                    var member = group.requireByToken(token);
+                    if (member.name().equals(group.creator().name())) {
+                        render(exchange, renderer.errorPage("Acceso denegado", "El creador no puede salirse del grupo. Puedes eliminar el grupo desde la página principal si eres administrador."));
+                        return;
+                    }
+                    group.removeMember(member.name());
+                    store.save(service.groups(), service.tournamentChampion());
+                    redirect(exchange, "/?success=Has+salido+del+grupo+" + URLEncoder.encode(group.name(), StandardCharsets.UTF_8));
                     return;
                 }
 
@@ -423,7 +437,7 @@ public class QuinielaApp {
     }
 
     private void ajaxGroupPageResponse(HttpExchange exchange, Group group, String token, String jornadaStr, String message) throws IOException {
-        var selectedJornada = jornadaStr.isBlank() ? 0 : Integer.parseInt(jornadaStr);
+        var selectedJornada = jornadaStr.isBlank() ? -1 : Integer.parseInt(jornadaStr);
         var member = group.requireByToken(token);
         var pageHtml = renderer.groupPage(group, member, service.candidates(), service.tournamentChampion(), service.tournamentStarted(), selectedJornada, null);
         var json = new java.util.LinkedHashMap<String, Object>();
