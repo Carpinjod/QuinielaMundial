@@ -4,6 +4,7 @@ import quinielamundial.domain.Group;
 import quinielamundial.domain.Match;
 import quinielamundial.domain.Member;
 import quinielamundial.domain.Prediction;
+import quinielamundial.domain.RankingEntry;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -51,9 +52,28 @@ public class HtmlRenderer {
         // ── My Groups (logged-in only) ──
         var myGroupsHtml = "";
         if (loggedInUser != null) {
-            var myList = userGroups.stream().map(g ->
-                "<a href='/groups/" + g.code() + "' class='my-group-card'><div><div class='name'>" + escape(g.name()) + "</div><div class='code'>" + g.code() + "</div></div><span class='arrow'>→</span></a>"
-            ).collect(Collectors.joining());
+            var myList = userGroups.stream().map(g -> {
+                var member = g.members().values().stream()
+                    .filter(m -> m.name().equals(loggedInUser)).findFirst();
+                if (member.isEmpty()) {
+                    return "<a href='/groups/" + g.code() + "' class='my-group-card'>"
+                        + "<div><div class='name'>" + escape(g.name()) + "</div><div class='code'>" + g.code() + "</div></div>"
+                        + "<span class='arrow'>→</span></a>";
+                }
+                var stats = computeMemberStats(g, member.get(), null);
+                var pendingText = stats.pendingPredictions() > 0
+                    ? "<span class='my-pending'>⏳ " + stats.pendingPredictions() + " pendientes</span>"
+                    : "<span class='my-pending done'>✅ Completado</span>";
+                return "<a href='/groups/" + g.code() + "' class='my-group-card enhanced'>"
+                    + "<div class='my-card-body'>"
+                    + "<div class='name'>" + escape(g.name()) + "</div>"
+                    + "<div class='my-meta'>#" + stats.rank() + " de " + stats.totalMembers() + " · " + stats.points() + " pts</div>"
+                    + pendingText
+                    + "</div>"
+                    + "<div class='my-card-right'>"
+                    + "<span class='arrow'>→</span>"
+                    + "</div></a>";
+            }).collect(Collectors.joining());
             myGroupsHtml = myList.isBlank() ? "" : "<div class='section-title'>📂 Mis grupos</div><div class='my-groups-grid'>" + myList + "</div>";
         }
 
@@ -224,6 +244,60 @@ public class HtmlRenderer {
             base *= 2;
         }
         return base;
+    }
+
+    /** Aggregated stats for a member within a group. */
+    private record MemberStats(int rank, int totalMembers, int points, int pendingPredictions, double hitPct, int bestStreak) {}
+
+    /** Compute MemberStats for a given member in a group, consistent with Group.computeScore(). */
+    private MemberStats computeMemberStats(Group group, Member member, String championTeam) {
+        var finished = group.allMatches().stream()
+            .filter(Match::finished)
+            .sorted(Comparator.comparing(Match::kickoff))
+            .toList();
+
+        int totalPoints = 0, exactHits = 0, outcomeHits = 0;
+        int hitMatches = 0, bestStreak = 0, currentStreak = 0;
+
+        for (var m : finished) {
+            var p = member.predictions().get(m.id());
+            if (p == null) { currentStreak = 0; continue; }
+
+            // Base score (w/o star multiplier) for exact/outcome counting — mirrors Group.scoreMatch
+            int base;
+            if (p.homeGoals() == m.homeGoals() && p.awayGoals() == m.awayGoals()) base = 3;
+            else {
+                var actual = m.result();
+                base = (actual != null && p.outcome().equals(actual)) ? 1 : 0;
+            }
+            if (base == 3) exactHits++;
+            else if (base == 1) outcomeHits++;
+
+            // Total with star multiplier
+            int pts = base;
+            if (base > 0 && !m.knockout() && member.starByJornada().getOrDefault(m.jornada(), -1) == m.id()) pts *= 2;
+            totalPoints += pts;
+
+            if (pts > 0) { hitMatches++; currentStreak++; if (currentStreak > bestStreak) bestStreak = currentStreak; }
+            else { currentStreak = 0; }
+        }
+
+        var championHit = member.championBet() != null && member.championBet().equals(championTeam);
+        if (championHit) totalPoints += 10;
+
+        var totalPredicted = (int) finished.stream().filter(m -> member.predictions().containsKey(m.id())).count();
+        var hitPct = totalPredicted > 0 ? (double) hitMatches / totalPredicted * 100 : 0.0;
+
+        var pending = (int) group.allMatches().stream()
+            .filter(m -> !m.finished() && !m.isStarted() && !member.predictions().containsKey(m.id()))
+            .count();
+
+        var rank = group.leaderboard(championTeam).stream()
+            .filter(e -> e.member().name().equals(member.name()))
+            .mapToInt(RankingEntry::rank)
+            .findFirst().orElse(0);
+
+        return new MemberStats(rank, group.members().size(), totalPoints, pending, hitPct, bestStreak);
     }
 
     public String groupPage(Group group, Member member, List<String> candidates, String championTeam, boolean tournamentStarted, int selectedJornada, String success) {
@@ -798,15 +872,18 @@ public class HtmlRenderer {
                 : rank == 2 ? "<span class='rank-medal rank-2'>🥈</span>"
                 : rank == 3 ? "<span class='rank-medal rank-3'>🥉</span>"
                 : String.valueOf(rank);
+            var stats = computeMemberStats(group, entry.member(), championTeam);
             return "<tr><td class='rank'>" + medal + "</td>"
                 + "<td><b>" + escape(entry.member().name()) + "</b></td>"
                 + "<td class='pts'>" + entry.score().totalPoints() + "</td>"
                 + "<td>" + entry.score().exactHits() + "</td>"
                 + "<td>" + entry.score().outcomeHits() + "</td>"
-                + "<td>" + (entry.score().championHit() ? "✅" : "–") + "</td></tr>";
+                + "<td>" + (entry.score().championHit() ? "✅" : "–") + "</td>"
+                + "<td class='stat-pct'>" + String.format("%.0f", stats.hitPct()) + "%</td>"
+                + "<td class='stat'>" + stats.bestStreak() + "</td></tr>";
         }).collect(Collectors.joining(""));
         return "<details class='card leaderboard' open><summary><h2>📊 Clasificación</h2></summary>"
-            + "<div class='table-wrap'><table><thead><tr><th>#</th><th>Usuario</th><th>Pts</th><th>🎯</th><th>🎲</th><th>🏆</th></tr></thead><tbody>"
+            + "<div class='table-wrap'><table><thead><tr><th>#</th><th>Usuario</th><th>Pts</th><th>🎯</th><th>🎲</th><th>🏆</th><th>%</th><th>🔥</th></tr></thead><tbody>"
             + rows + "</tbody></table></div></details>";
     }
 
@@ -1199,6 +1276,12 @@ public class HtmlRenderer {
             + ".my-group-card .code{font-size:clamp(11px,1vw,13px);color:var(--text-dim);margin-top:2px}"
             + ".my-group-card .arrow{color:var(--text-dim);font-size:clamp(16px,1.5vw,20px);transition:transform .15s ease}"
             + ".my-group-card:hover .arrow{color:var(--pri);transform:translateX(4px)}"
+            + ".my-group-card.enhanced{align-items:stretch;gap:clamp(10px,1.2vw,16px);padding:clamp(14px,1.8vw,22px) clamp(16px,2vw,24px)}"
+            + ".my-card-body{display:flex;flex-direction:column;gap:clamp(4px,.6vw,8px);flex:1;min-width:0}"
+            + ".my-card-body .my-meta{font-size:clamp(12px,1.1vw,14px);color:var(--text-sec);font-weight:500}"
+            + ".my-card-right{display:flex;align-items:center;justify-content:center;flex-shrink:0}"
+            + ".my-pending{font-size:clamp(11px,1vw,13px);color:var(--yellow);font-weight:600;display:inline-flex;align-items:center;gap:clamp(4px,.5vw,6px)}"
+            + ".my-pending.done{color:var(--green)}"
             + ".all-groups-list{list-style:none;display:flex;flex-direction:column;gap:6px}"
             + ".all-groups-list li{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:clamp(10px,1.2vw,14px) clamp(12px,1.5vw,18px);font-size:clamp(13px,1.2vw,15px);display:flex;justify-content:space-between;align-items:center;min-height:44px}"
             + ".all-groups-list li .code-tag{font-size:clamp(10px,.9vw,12px);background:var(--surface-alt);padding:2px 10px;border-radius:4px;color:var(--text-dim);font-family:ui-monospace,monospace;letter-spacing:.02em}"
@@ -1380,6 +1463,8 @@ public class HtmlRenderer {
             + ".rank-2{background:var(--silver);color:#0B1020}"
             + ".rank-3{background:var(--bronze);color:#fff;box-shadow:0 0 12px rgba(180,83,9,.3)}"
             + "td.pts{text-align:center;font-weight:800;color:var(--pri);font-size:clamp(18px,1.8vw,24px);font-family:var(--font-mono)}"
+            + "td.stat{text-align:center;font-size:clamp(11px,1vw,13px);font-weight:600;white-space:nowrap}"
+            + "td.stat-pct{text-align:center;font-size:clamp(11px,1vw,13px);font-weight:600;white-space:nowrap;color:var(--text-sec)}"
 
             // Sidebar overrides
             + ".col-side .card{padding:clamp(14px,2vw,24px);margin:0}"
