@@ -5,6 +5,7 @@ import quinielamundial.domain.Match;
 import quinielamundial.domain.Member;
 import quinielamundial.domain.Prediction;
 import quinielamundial.domain.RankingEntry;
+import quinielamundial.domain.RoundMomentum;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -329,7 +330,7 @@ public class HtmlRenderer {
         // ── Content: Accordion (group stage) or Bracket (knockout) ──
         String mainContent;
         if (isKnockoutView) {
-            mainContent = bracketView(group, member, isCreator, tournamentStarted);
+            mainContent = bracketView(group, member, isCreator, tournamentStarted, championTeam);
         } else {
             var totalJornadas = group.matches().stream().mapToInt(Match::jornada).max().orElse(3);
             var currentJor = currentJornada(group);
@@ -589,7 +590,7 @@ public class HtmlRenderer {
     }
 
     // ── Knockout bracket view ──
-    private String bracketView(Group group, Member member, boolean isCreator, boolean tournamentStarted) {
+    private String bracketView(Group group, Member member, boolean isCreator, boolean tournamentStarted, String championTeam) {
         var koMatches = group.knockoutMatches();
         var groupFinished = group.groupStageFinished();
 
@@ -612,6 +613,12 @@ public class HtmlRenderer {
                 default -> "";
             };
 
+            // ── Momentum card for this round ──
+            var momentum = group.computeRoundMomentum(round, championTeam);
+            if (momentum.anyFinished()) {
+                sb.append(momentumCard(momentum));
+            }
+
             sb.append("<div class='ko-round'><h3 class='ko-round-title'>").append(roundName).append("</h3>");
 
             for (var match : matches) {
@@ -626,6 +633,82 @@ public class HtmlRenderer {
                 + sb.toString();
         }
 
+        return sb.toString();
+    }
+
+    // ── Round momentum card ──
+    private String momentumCard(RoundMomentum m) {
+        var statusBadge = m.complete()
+            ? "<span class='mom-status mom-done'>✅</span>"
+            : "<span class='mom-status mom-live'>🔄 En curso</span>";
+
+        var sb = new StringBuilder();
+        sb.append("<div class='momentum-card'>")
+            .append("<div class='mom-header'>")
+            .append("<span class='mom-badge'>🔥 MOMENTUM</span>")
+            .append("<span class='mom-round'>").append(escape(m.roundName())).append("</span>")
+            .append(statusBadge)
+            .append("</div><div class='mom-grid'>");
+
+        // ── Climber ──
+        if (m.climber() != null) {
+            sb.append("<div class='mom-item mom-climber'>")
+                .append("<div class='mom-icon'>📈</div>")
+                .append("<div class='mom-body'>")
+                .append("<span class='mom-label'>MÁS SUBE</span>")
+                .append("<span class='mom-name'>").append(escape(m.climber().memberName())).append("</span>")
+                .append("<span class='mom-detail'>+").append(m.climber().positionsClimbed())
+                .append(" puesto").append(m.climber().positionsClimbed() == 1 ? "" : "s")
+                .append(" · ").append(m.climber().roundPoints()).append(" pts</span>")
+                .append("</div></div>");
+        }
+
+        // ── Unique hit ──
+        if (m.uniqueHit() != null) {
+            var u = m.uniqueHit();
+            sb.append("<div class='mom-item mom-unique'>")
+                .append("<div class='mom-icon'>🔥</div>")
+                .append("<div class='mom-body'>")
+                .append("<span class='mom-label'>EL ACIERTO DEL DÍA</span>")
+                .append("<span class='mom-name'>").append(escape(u.memberName())).append("</span>")
+                .append("<span class='mom-detail'>")
+                .append(flagOf(u.homeTeam())).append(" ").append(teamEs(u.homeTeam()))
+                .append(" ").append(u.homeGoals()).append("-").append(u.awayGoals())
+                .append(" ").append(flagOf(u.awayTeam())).append(" ").append(teamEs(u.awayTeam()))
+                .append(" — solo ").append(u.predictorsCount())
+                .append(" lo acert").append(u.predictorsCount() == 1 ? "ó" : "aron")
+                .append("</span>")
+                .append("</div></div>");
+        }
+
+        // ── Faller ──
+        if (m.faller() != null) {
+            sb.append("<div class='mom-item mom-faller'>")
+                .append("<div class='mom-icon'>📉</div>")
+                .append("<div class='mom-body'>")
+                .append("<span class='mom-label'>MÁS BAJA</span>")
+                .append("<span class='mom-name'>").append(escape(m.faller().memberName())).append("</span>")
+                .append("<span class='mom-detail'>-").append(m.faller().positionsFell())
+                .append(" puesto").append(m.faller().positionsFell() == 1 ? "" : "s")
+                .append(" · ").append(m.faller().roundPoints()).append(" pts</span>")
+                .append("</div></div>");
+        }
+
+        // ── Most exacts ──
+        if (m.mostExact() != null) {
+            sb.append("<div class='mom-item mom-exacts'>")
+                .append("<div class='mom-icon'>🎯</div>")
+                .append("<div class='mom-body'>")
+                .append("<span class='mom-label'>MÁS EXACTOS</span>")
+                .append("<span class='mom-name'>").append(escape(m.mostExact().memberName())).append("</span>")
+                .append("<span class='mom-detail'>").append(m.mostExact().exactCount())
+                .append(" resultado").append(m.mostExact().exactCount() == 1 ? "" : "s")
+                .append(" exacto").append(m.mostExact().exactCount() == 1 ? "" : "s")
+                .append(" en la ronda</span>")
+                .append("</div></div>");
+        }
+
+        sb.append("</div></div>");
         return sb.toString();
     }
 
@@ -1503,6 +1586,38 @@ public class HtmlRenderer {
             //  SETTINGS
             // ═══════════════════════════════════════
             + ".settings-layout{max-width:min(560px,100%);margin:0 auto}"
+
+            // ═══════════════════════════════════════
+            //  MOMENTUM CARD — round highlights
+            // ═══════════════════════════════════════
+            + ".momentum-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:clamp(16px,2vw,24px);box-shadow:var(--shadow-sm)}"
+            + ".mom-header{display:flex;align-items:center;gap:clamp(8px,1vw,14px);padding:clamp(10px,1vw,14px) clamp(14px,1.6vw,20px);background:var(--gradient);color:#fff;flex-wrap:wrap}"
+            + ".mom-badge{font-size:clamp(11px,1vw,13px);font-weight:800;text-transform:uppercase;letter-spacing:.08em;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:4px}"
+            + ".mom-round{font-size:clamp(13px,1.2vw,16px);font-weight:700;opacity:.9}"
+            + ".mom-status{margin-left:auto;font-size:clamp(11px,1vw,13px);font-weight:600;display:flex;align-items:center;gap:4px}"
+            + ".mom-live{opacity:.85}"
+            + ".mom-done{opacity:.85}"
+            + ".mom-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}"
+            + "@media(max-width:599px){.mom-grid{grid-template-columns:1fr}}"
+            + ".mom-item{display:flex;align-items:flex-start;gap:clamp(10px,1vw,14px);padding:clamp(12px,1.2vw,18px) clamp(14px,1.6vw,20px);border-bottom:1px solid var(--border)}"
+            + ".mom-item:nth-child(even){border-left:1px solid var(--border)}"
+            + "@media(max-width:599px){.mom-item:nth-child(even){border-left:none}}"
+            + ".mom-item .mom-icon{font-size:clamp(22px,2.2vw,28px);line-height:1;flex-shrink:0;margin-top:2px}"
+            + ".mom-item .mom-body{display:flex;flex-direction:column;gap:2px;min-width:0}"
+            + ".mom-item .mom-label{font-size:clamp(9px,.8vw,10px);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim)}"
+            + ".mom-item .mom-name{font-size:clamp(15px,1.3vw,17px);font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+            + ".mom-item .mom-detail{font-size:clamp(12px,1vw,13px);color:var(--text-sec);line-height:1.4}"
+            // Last item in each column has no bottom border
+            + ".mom-grid .mom-item:last-child,.mom-grid .mom-item:nth-last-child(2):nth-child(even){border-bottom:none}"
+            // Mobile: respect order, last item no border
+            + "@media(max-width:599px){.mom-grid .mom-item:last-child{border-bottom:none}.mom-grid .mom-item:nth-last-child(2):nth-child(even){border-bottom:1px solid var(--border)}}"
+            // Remove bottom border if only 2 items (fills 1 row)
+            + ".mom-grid .mom-item:nth-last-child(2):first-child{border-bottom:none}"
+            // Color accents for each type
+            + ".mom-climber .mom-icon,.mom-climber .mom-name{color:var(--green)}"
+            + ".mom-faller .mom-icon,.mom-faller .mom-name{color:var(--red)}"
+            + ".mom-unique .mom-icon,.mom-unique .mom-name{color:#f59e0b}"
+            + ".mom-exacts .mom-icon,.mom-exacts .mom-name{color:var(--pri)}"
 
             // ═══════════════════════════════════════
             //  KNOCKOUT BRACKET — premium dark
