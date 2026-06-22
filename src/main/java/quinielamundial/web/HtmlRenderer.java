@@ -589,7 +589,7 @@ public class HtmlRenderer {
         return "<details class='predictions-toggle'><summary>👥 Pronósticos (" + count + "/" + group.members().size() + ")</summary><ul>" + items + "</ul></details>";
     }
 
-    // ── Knockout bracket view ──
+    // ── Knockout bracket view (accordion, like group-stage jornadas) ──
     private String bracketView(Group group, Member member, boolean isCreator, boolean tournamentStarted, String championTeam) {
         var koMatches = group.knockoutMatches();
         var groupFinished = group.groupStageFinished();
@@ -597,6 +597,24 @@ public class HtmlRenderer {
         // Group by round
         var byRound = koMatches.stream()
             .collect(Collectors.groupingBy(Match::round, LinkedHashMap::new, Collectors.toList()));
+
+        // Determine in-progress round and which to open by default
+        int inProgressRound = 0;
+        int firstUpcoming = Integer.MAX_VALUE;
+        int maxRound = 0;
+        for (var match : koMatches) {
+            if (match.round() > maxRound) maxRound = match.round();
+            if (!match.finished() && match.isStarted()) inProgressRound = match.round();
+            if (!match.isStarted() && match.round() < firstUpcoming) firstUpcoming = match.round();
+        }
+        int defaultOpenRound;
+        if (inProgressRound > 0) {
+            defaultOpenRound = inProgressRound;
+        } else if (firstUpcoming < Integer.MAX_VALUE) {
+            defaultOpenRound = firstUpcoming;
+        } else {
+            defaultOpenRound = maxRound; // all finished, open last round
+        }
 
         var sb = new StringBuilder();
         for (var entry : byRound.entrySet()) {
@@ -613,27 +631,53 @@ public class HtmlRenderer {
                 default -> "";
             };
 
+            // Round statistics
+            var total = matches.size();
+            var finished = (int) matches.stream().filter(Match::finished).count();
+            var started = (int) matches.stream().filter(m -> !m.finished() && m.isStarted()).count();
+            var pending = total - finished - started;
+            var isCurrent = round == inProgressRound && started > 0;
+            var isOpen = round == defaultOpenRound;
+
+            // ── Accordion section ──
+            sb.append("<details class='jor-section'")
+                .append(isOpen ? " open" : "")
+                .append(">")
+                .append("<summary class='jor-header")
+                .append(isCurrent ? " jor-current" : "")
+                .append("'><span class='jor-title'><span class='jor-num'>").append(escape(roundName)).append("</span>")
+                .append(isCurrent ? " <span class='jor-now'>En vivo</span>" : "")
+                .append("</span><span class='jor-meta'>")
+                .append(total).append(" partidos")
+                .append(pending > 0 ? " · <span class='jor-pending'>" + pending + " pendientes</span>" : "")
+                .append(finished > 0 ? " · " + finished + " finalizados" : "")
+                .append("</span></summary>")
+                .append("<div class='jor-matches'>");
+
             // ── Momentum card for this round ──
             var momentum = group.computeRoundMomentum(round, championTeam);
             if (momentum.anyFinished()) {
                 sb.append(momentumCard(momentum));
             }
 
-            sb.append("<div class='ko-round'><h3 class='ko-round-title'>").append(roundName).append("</h3>");
-
+            // ── Knockout cards ──
             for (var match : matches) {
                 sb.append(knockoutCard(group, match, member, isCreator));
             }
-            sb.append("</div>");
+
+            sb.append("</div></details>");
         }
+
+        // ── Wrap in accordion container ──
+        var accordion = "<div class='jor-accordion'>" + sb + "</div>";
 
         if (!groupFinished) {
             return "<div class='ko-pending'><div class='ko-pending-icon'>🔒</div><h2>Esperando a la fase de grupos</h2>"
                 + "<p>Las eliminatorias se desbloquearán cuando los 72 partidos de la fase de grupos tengan resultado.</p></div>"
-                + sb.toString();
+                + accordion;
         }
 
-        return sb.toString();
+        return accordion;
     }
 
     // ── Round momentum card ──
