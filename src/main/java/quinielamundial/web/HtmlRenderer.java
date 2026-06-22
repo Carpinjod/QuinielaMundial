@@ -445,21 +445,6 @@ public class HtmlRenderer {
             && member.starByJornada().containsKey(jornadaIdx)
             && group.matchById(member.starByJornada().get(jornadaIdx)).isStarted();
 
-        // ═══ Result CSS class for card coloring ──
-        var resultClass = "";
-        if (finished && memberPrediction != null) {
-            var actual = match.result();
-            if (actual != null) {
-                if (memberPrediction.homeGoals() == match.homeGoals() && memberPrediction.awayGoals() == match.awayGoals()) {
-                    resultClass = " correct-exact";
-                } else if (memberPrediction.outcome().equals(actual)) {
-                    resultClass = " correct-winner";
-                } else {
-                    resultClass = " wrong";
-                }
-            }
-        }
-
         // ═══ Grid columns: time | group | home | score/form | away | badge ═══
 
         // 1. Date + time (e.g. "Hoy 14:30" or "10 Jun 16:00")
@@ -546,7 +531,7 @@ public class HtmlRenderer {
         } else {
             matchTeamsHtml = "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>";
             var predInfo = finished && memberPrediction != null
-                ? "<span class='pred-vs'>tuyo " + memberPrediction.homeGoals() + "-" + memberPrediction.awayGoals() + "</span>"
+                ? "<span class='pred-vs'><span class='pred-label'>PRONÓSTICO</span><span class='pred-score'>" + memberPrediction.homeGoals() + "<span class='pred-sep'>–</span>" + memberPrediction.awayGoals() + "</span></span>"
                 : "";
             matchActionsHtml = "<div class='match-actions'>" + scoreHtml + statusHtml + predInfo + "</div>";
         }
@@ -571,7 +556,7 @@ public class HtmlRenderer {
         var extrasStr = extras.toString();
         var extrasHtml = extrasStr.isEmpty() ? "" : "<div class='match-row-extras'>" + extrasStr + "</div>";
 
-        return "<article class='match-row" + resultClass + "' data-match-id='" + match.id() + "'>" + mainRow + extrasHtml + "</article>";
+        return "<article class='match-row' data-match-id='" + match.id() + "'>" + mainRow + extrasHtml + "</article>";
     }
 
     // ── Score prediction form (compact, for match-row) ──
@@ -1501,7 +1486,10 @@ public class HtmlRenderer {
             + ".vs-badge{display:none}"
             + ".match-actions{display:flex;align-items:center;justify-content:center;gap:clamp(4px,.5vw,8px);width:100%;flex-wrap:wrap}"
             + ".match-actions .match-score,.match-actions .pred-display{display:none}"
-            + ".pred-vs{font-size:clamp(10px,.9vw,13px);color:var(--text-dim);font-weight:500;padding:2px 10px;background:var(--surface2);border-radius:100px;white-space:nowrap}"
+            + ".pred-vs{display:inline-flex;align-items:center;gap:clamp(4px,.4vw,7px);white-space:nowrap}"
+            + ".pred-vs .pred-label{font-size:clamp(9px,.75vw,10px);font-weight:700;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase}"
+            + ".pred-vs .pred-score{font-family:var(--font-mono);font-size:clamp(13px,1.1vw,16px);font-weight:700;color:var(--text-sec);letter-spacing:-.02em}"
+            + ".pred-vs .pred-sep{font-family:var(--font-mono);font-size:clamp(11px,1vw,14px);color:var(--text-dim);margin:0 1px}"
             + ".team-form{display:flex;flex-direction:column;align-items:center;gap:clamp(6px,.6vw,10px);width:100%}"
             + ".team-form .btn-predict{margin-top:clamp(2px,.3vw,4px)}"
             + ".result-dot{justify-content:center}"
