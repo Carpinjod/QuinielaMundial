@@ -81,6 +81,39 @@ class QuinielaDomainTest {
     }
 
     @Test
+    void rankingTiebreaksWithOutcomeHits() {
+        // Verify that outcomeHits participates in sameTieKey:
+        // same totalPoints + exactHits + outcomeHits → same rank
+        var service = new QuinielaService();
+        var group = service.createGroup("Grupo", "Ana");
+        TestUtils.setFutureKickoffs(group);
+        var ana = group.creator();
+        var luis = group.join("Luis");
+        var match1 = group.matches().get(0);
+        var match2 = group.matches().get(1);
+
+        // Both predict match1 exact: 3pts, 1 exact, 0 outcome
+        group.submitPrediction(ana.token(), match1.id(), 1, 0);
+        group.submitPrediction(luis.token(), match1.id(), 1, 0);
+        group.registerResult(match1.id(), 1, 0);
+
+        // Both predict match2 outcome ONLY (home win, NOT exact)
+        // Actual: 2-0 → Ana predicts 3-0, Luis predicts 4-1 → both home win, nieto exacto
+        group.submitPrediction(ana.token(), match2.id(), 3, 0);
+        group.submitPrediction(luis.token(), match2.id(), 4, 1);
+        group.registerResult(match2.id(), 2, 0);
+
+        var ranking = group.leaderboard("Argentina");
+        // Both: 4 pts (3 exact + 1 outcome), 1 exact, 1 outcome → tied on ALL criteria
+        assertEquals(ranking.get(0).score().totalPoints(), ranking.get(1).score().totalPoints());
+        assertEquals(ranking.get(0).score().exactHits(), ranking.get(1).score().exactHits());
+        assertEquals(ranking.get(0).score().outcomeHits(), ranking.get(1).score().outcomeHits());
+        assertEquals(1, ranking.get(0).rank());
+        assertEquals(1, ranking.get(1).rank(),
+            "Both members tied on all criteria should have same rank");
+    }
+
+    @Test
     void joinAndLockRules() {
         var service = new QuinielaService();
         var group = service.createGroup("Grupo", "Ana");

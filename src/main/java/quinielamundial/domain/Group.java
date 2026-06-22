@@ -134,6 +134,7 @@ public class Group implements Serializable {
             .map(member -> new RankingEntry(member, computeScore(member, championTeam), 0))
             .sorted(Comparator.comparing((RankingEntry e) -> e.score().totalPoints()).reversed()
                 .thenComparing(e -> e.score().exactHits(), Comparator.reverseOrder())
+                .thenComparing(e -> e.score().outcomeHits(), Comparator.reverseOrder())
                 .thenComparing(e -> e.score().championHit(), Comparator.reverseOrder())
                 .thenComparing(e -> e.member().name()))
             .collect(Collectors.toList());
