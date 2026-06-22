@@ -94,13 +94,23 @@ Por usuario:
 - Mejor/peor pronóstico
 - Comparativa con la media del grupo
 
-### 9. Modo oscuro / claro
+### 9. Modo oscuro / claro ✅ YA IMPLEMENTADO
 
-Toggle para cambiar entre tema oscuro y claro (algunos prefieren claro de día).
+Toggle en el header para cambiar entre tema oscuro y claro. Persiste elección en localStorage. `toggleTheme()` + `[data-theme=light]` con paleta completa.
 
-### 10. Tests de interfaz
+### 10. Tests de interfaz ✅ IMPLEMENTADO
 
-Tests automatizados que verifiquen que el HTML generado es correcto y que el CSS cubre todos los componentes.
+Tests automatizados (84 nuevos tests) que verifican:
+- Todos los design tokens de CSS están definidos (--bg, --surface, --pri, etc.)
+- Todas las clases CSS de componentes existen (.card, .match-row, .btn-star, etc.)
+- Todas las animaciones y keyframes están definidos
+- Los media queries responsive están presentes
+- La estructura HTML de cada página es correcta (doctype, header, main, footer)
+- Cada página renderiza los componentes esperados (home: hero + cards, group: accordion + leaderboard)
+- Los estados de las match cards (form mode, finished, started) generan el HTML correcto
+- Las funciones JS requeridas existen (showToast, toggleDrawer, liveScores, etc.)
+- Los formularios AJAX tienen la estructura correcta
+- Las reglas de visibilidad de pronósticos se cumplen
 
 ---
 
@@ -119,6 +129,6 @@ Tests automatizados que verifiquen que el HTML generado es correcto y que el CSS
 | Frontend | HTML generado server-side + CSS inline (~480 líneas) |
 | Persistencia | Serialización Java en disco (`data/quiniela-state.txt`) |
 | Líneas de código total | ~2500 |
-| Tests | 9 tests unitarios (JUnit 5) |
+| Tests | 120 tests (JUnit 5) — 3 clases de tests pre-existentes + 2 nuevas de cobertura CSS y estructura de páginas |
 | Servidor | VPS Ubuntu 24.04, nginx 1.24 + Let's Encrypt |
 | Tiempo de actividad | 100% desde el despliegue |
