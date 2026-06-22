@@ -12,12 +12,14 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 public class MatchUpdateService {
     private static final String API_URL = "https://api.openligadb.de/getmatchdata/wm26/2026";
@@ -26,7 +28,7 @@ public class MatchUpdateService {
     private static final Logger LOG = new Logger("MatchUpdateService");
 
     private final List<Group> groups;
-    private final Runnable onBracketUpdate;
+    private final Consumer<List<Group>> onScoresUpdated;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final Gson gson = new Gson();
@@ -83,9 +85,9 @@ public class MatchUpdateService {
         Map.entry("Österreich", "Austria")
     );
 
-    public MatchUpdateService(List<Group> groups, Runnable onBracketUpdate) {
+    public MatchUpdateService(List<Group> groups, Consumer<List<Group>> onScoresUpdated) {
         this.groups = groups;
-        this.onBracketUpdate = onBracketUpdate;
+        this.onScoresUpdated = onScoresUpdated;
     }
 
     public void start() {
@@ -114,13 +116,15 @@ public class MatchUpdateService {
             var apiMatches = parseApiMatches(response.body());
             if (apiMatches.isEmpty()) return;
 
-            var updated = 0;
+            var updatedGroups = new ArrayList<Group>();
             for (var group : groups) {
-                updated += updateGroup(group, apiMatches);
+                if (updateGroup(group, apiMatches) > 0) {
+                    updatedGroups.add(group);
+                }
             }
-            if (updated > 0) {
-                onBracketUpdate.run();
-                LOG.info("Updated {} matches, brackets re-resolved", updated);
+            if (!updatedGroups.isEmpty()) {
+                onScoresUpdated.accept(updatedGroups);
+                LOG.info("Updated {} groups, brackets re-resolved", updatedGroups.size());
             }
         } catch (Exception e) {
             LOG.error("Poll failed: {}", e.getMessage());

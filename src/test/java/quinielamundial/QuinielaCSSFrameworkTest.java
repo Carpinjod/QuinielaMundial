@@ -452,7 +452,7 @@ class QuinielaCSSFrameworkTest {
             () -> assertTrue(html.contains("function toggleDrawer"), "toggleDrawer()"),
             () -> assertTrue(html.contains("function closeDrawer"), "closeDrawer()"),
             () -> assertTrue(html.contains("function togglePendingFilter"), "togglePendingFilter()"),
-            () -> assertTrue(html.contains("function liveScores"), "liveScores()"),
+            () -> assertTrue(html.contains("function liveScoresFromSSE"), "liveScoresFromSSE()"),
             () -> assertTrue(html.contains("function toggleTheme"), "toggleTheme()")
         );
     }
@@ -467,10 +467,10 @@ class QuinielaCSSFrameworkTest {
     }
 
     @Test
-    void liveScoresPollingIntervalExists() {
+    void liveScoresSSEExists() {
         var html = renderer.homePage(List.of(), null, List.of(), null);
-        assertTrue(html.contains("setInterval(liveScores,15000)"),
-            "liveScores polling interval must be 15s");
+        assertTrue(html.contains("EventSource('/groups/'"),
+            "live scores must use EventSource (SSE) instead of polling");
     }
 
     @Test

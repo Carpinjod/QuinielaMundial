@@ -8,6 +8,7 @@ import quinielamundial.domain.Member;
 import quinielamundial.persistence.StateStore;
 import quinielamundial.logging.Logger;
 import quinielamundial.service.AuthService;
+import quinielamundial.web.ScoreStream;
 import quinielamundial.service.BracketResolver;
 import quinielamundial.service.MatchUpdateService;
 import quinielamundial.service.QuinielaService;
@@ -20,7 +21,9 @@ import java.net.InetSocketAddress;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class QuinielaApp {
@@ -32,6 +35,7 @@ public class QuinielaApp {
     private final HtmlRenderer renderer = new HtmlRenderer();
     private final String adminUsername = System.getenv().getOrDefault("ADMIN_USER", "PJ");
     private AuthService auth;
+    private final Map<String, ScoreStream> scoreStreams = new HashMap<>();
     private volatile boolean ready = false;
 
     public void start(int port) throws IOException {
@@ -40,15 +44,27 @@ public class QuinielaApp {
         service.restoreState(snapshot.groups(), snapshot.champion());
         for (var group : service.groups()) {
             attachPersistence(group);
+            scoreStreams.put(group.code(), new ScoreStream());
         }
         // Resolve knockout brackets for all groups (populates R32 from current standings)
         service.resolveAllBrackets();
         store.save(service.groups(), service.tournamentChampion());
-        var updater = new MatchUpdateService(service.groups().stream().toList(), () -> {
+        var updater = new MatchUpdateService(service.groups().stream().toList(), updatedGroups -> {
             for (var g : service.groups()) {
                 BracketResolver.resolveBracket(g);
             }
             store.save(service.groups(), service.tournamentChampion());
+            // Push live scores to SSE clients of updated groups
+            var gson = new Gson();
+            for (var g : updatedGroups) {
+                var stream = scoreStreams.get(g.code());
+                if (stream == null || !stream.hasClients()) continue;
+                var scores = g.allMatches().stream()
+                    .filter(m -> m.isStarted())
+                    .map(m -> new LiveScore(m.id(), m.homeGoals(), m.awayGoals(), m.finished()))
+                    .toList();
+                stream.broadcast(gson.toJson(scores));
+            }
         });
         updater.start();
         var server = HttpServer.create(new InetSocketAddress(port), 0);
@@ -235,6 +251,12 @@ public class QuinielaApp {
                     var selectedJornada = jornadaStr.isBlank() ? -1 : Integer.parseInt(jornadaStr);
                     var success = FormData.param(exchange, "success");
                     render(exchange, renderer.groupPage(group, member, service.candidates(), service.tournamentChampion(), service.tournamentStarted(), selectedJornada, success.isBlank() ? null : success));
+                    return;
+                }
+
+                if ("GET".equals(method) && tail.equals(code + "/api/scores/sse")) {
+                    var stream = scoreStreams.get(group.code());
+                    if (stream != null) stream.subscribe(exchange);
                     return;
                 }
 
