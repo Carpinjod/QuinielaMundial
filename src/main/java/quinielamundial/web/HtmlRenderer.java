@@ -445,6 +445,21 @@ public class HtmlRenderer {
             && member.starByJornada().containsKey(jornadaIdx)
             && group.matchById(member.starByJornada().get(jornadaIdx)).isStarted();
 
+        // ═══ Result CSS class for card coloring ──
+        var resultClass = "";
+        if (finished && memberPrediction != null) {
+            var actual = match.result();
+            if (actual != null) {
+                if (memberPrediction.homeGoals() == match.homeGoals() && memberPrediction.awayGoals() == match.awayGoals()) {
+                    resultClass = " correct-exact";
+                } else if (memberPrediction.outcome().equals(actual)) {
+                    resultClass = " correct-winner";
+                } else {
+                    resultClass = " wrong";
+                }
+            }
+        }
+
         // ═══ Grid columns: time | group | home | score/form | away | badge ═══
 
         // 1. Date + time (e.g. "Hoy 14:30" or "10 Jun 16:00")
@@ -530,7 +545,10 @@ public class HtmlRenderer {
             matchActionsHtml = "<div class='match-actions'>" + statusHtml + starBadge + "</div>";
         } else {
             matchTeamsHtml = "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>";
-            matchActionsHtml = "<div class='match-actions'>" + scoreHtml + statusHtml + "</div>";
+            var predInfo = finished && memberPrediction != null
+                ? "<span class='pred-vs'>tuyo " + memberPrediction.homeGoals() + "-" + memberPrediction.awayGoals() + "</span>"
+                : "";
+            matchActionsHtml = "<div class='match-actions'>" + scoreHtml + statusHtml + predInfo + "</div>";
         }
 
         var mainRow = "<div class='match-row-main'>"
@@ -553,7 +571,7 @@ public class HtmlRenderer {
         var extrasStr = extras.toString();
         var extrasHtml = extrasStr.isEmpty() ? "" : "<div class='match-row-extras'>" + extrasStr + "</div>";
 
-        return "<article class='match-row' data-match-id='" + match.id() + "'>" + mainRow + extrasHtml + "</article>";
+        return "<article class='match-row" + resultClass + "' data-match-id='" + match.id() + "'>" + mainRow + extrasHtml + "</article>";
     }
 
     // ── Score prediction form (compact, for match-row) ──
@@ -1483,6 +1501,7 @@ public class HtmlRenderer {
             + ".vs-badge{display:none}"
             + ".match-actions{display:flex;align-items:center;justify-content:center;gap:clamp(4px,.5vw,8px);width:100%;flex-wrap:wrap}"
             + ".match-actions .match-score,.match-actions .pred-display{display:none}"
+            + ".pred-vs{font-size:clamp(10px,.9vw,13px);color:var(--text-dim);font-weight:500;padding:2px 10px;background:var(--surface2);border-radius:100px;white-space:nowrap}"
             + ".team-form{display:flex;flex-direction:column;align-items:center;gap:clamp(6px,.6vw,10px);width:100%}"
             + ".team-form .btn-predict{margin-top:clamp(2px,.3vw,4px)}"
             + ".result-dot{justify-content:center}"
