@@ -660,13 +660,23 @@ public class HtmlRenderer {
                 sb.append(momentumCard(momentum));
             }
 
-            // ── Knockout cards ──
+            // ── Knockout cards (wrapped for pending filter) ──
             for (var match : matches) {
-                sb.append(knockoutCard(group, match, member, isCreator));
+                var isActive = member != null && !match.finished() && match.teamsKnown();
+                sb.append("<div class='match-wrapper' data-active=\"").append(isActive).append("\">")
+                    .append(knockoutCard(group, match, member, isCreator))
+                    .append("</div>");
             }
 
             sb.append("</div></details>");
         }
+
+        // ── Filter bar ──
+        var filterBar = "<div class='filter-bar'>"
+            + "<label class='filter-pending'><input type='checkbox' id='filterPending' onclick='togglePendingFilter()'>"
+            + "<span>Solo pendientes</span></label>"
+            + "<span class='filter-info' id='filterInfo'></span>"
+            + "</div>";
 
         // ── Wrap in accordion container ──
         var accordion = "<div class='jor-accordion'>" + sb + "</div>";
@@ -674,10 +684,10 @@ public class HtmlRenderer {
         if (!groupFinished) {
             return "<div class='ko-pending'><div class='ko-pending-icon'>🔒</div><h2>Esperando a la fase de grupos</h2>"
                 + "<p>Las eliminatorias se desbloquearán cuando los 72 partidos de la fase de grupos tengan resultado.</p></div>"
-                + accordion;
+                + filterBar + accordion;
         }
 
-        return accordion;
+        return filterBar + accordion;
     }
 
     // ── Round momentum card ──
