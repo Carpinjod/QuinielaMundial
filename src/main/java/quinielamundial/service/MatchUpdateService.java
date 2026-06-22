@@ -20,8 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 public class MatchUpdateService {
     private static final String API_URL = "https://api.openligadb.de/getmatchdata/wm26/2026";
-    private static final long POLL_INTERVAL_SECONDS = 300; // 5 minutes
-    private static final long MATCH_BUFFER_HOURS = 3;
+    private static final long POLL_INTERVAL_SECONDS = 60; // 1 minute
 
     private final List<Group> groups;
     private final Runnable onBracketUpdate;
@@ -158,11 +157,8 @@ public class MatchUpdateService {
 
     private int updateGroup(Group group, Map<String, ApiMatch> apiMatches) {
         var count = 0;
-        var now = Instant.now();
         for (var match : group.matches()) {
             if (match.finished()) continue;
-            // Only check matches that kicked off at least MATCH_BUFFER_HOURS ago
-            if (match.kickoff().plusSeconds(MATCH_BUFFER_HOURS * 3600).isAfter(now)) continue;
 
             var key = normalize(match.home()) + "|" + normalize(match.away()) + "|" + dateOnly(match.kickoff().toString());
             var apiMatch = apiMatches.get(key);

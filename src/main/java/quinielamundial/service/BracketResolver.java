@@ -191,7 +191,19 @@ public class BracketResolver {
         return result;
     }
 
+    /**
+     * Computes group standings per FIFA 2026 regulations.
+     *
+     * Tiebreaker order (FIFA 2026):
+     * 1. Points (3/1/0)
+     * 2. Head-to-head points (among tied teams only)
+     * 3. Head-to-head goal difference
+     * 4. Head-to-head goals scored
+     * 5. Overall goal difference
+     * 6. Overall goals scored
+     */
     private static List<Standing> calculateGroupStandings(Group group, List<String> teams) {
+        // ── 1st pass: compute overall pts, GF, GA for every team ──
         var pts = new HashMap<String, Integer>();
         var gf = new HashMap<String, Integer>();
         var ga = new HashMap<String, Integer>();
@@ -211,14 +223,107 @@ public class BracketResolver {
             else { pts.merge(h, 1, Integer::sum); pts.merge(a, 1, Integer::sum); }
         }
 
-        return teams.stream()
-            .map(t -> new Standing(t, pts.getOrDefault(t, 0),
-                gf.getOrDefault(t, 0) - ga.getOrDefault(t, 0),
-                gf.getOrDefault(t, 0)))
-            .sorted(Comparator.<Standing, Integer>comparing(Standing::points).reversed()
-                .thenComparingInt(Standing::goalDiff).reversed()
-                .thenComparingInt(Standing::goalsFor).reversed())
-            .collect(Collectors.toList());
+        // ── 2nd pass: group by points and resolve H2H within each tier ──
+        var byPoints = teams.stream().collect(Collectors.groupingBy(t -> pts.getOrDefault(t, 0)));
+        var sortedKeys = byPoints.keySet().stream().sorted(Comparator.reverseOrder()).toList();
+
+        var result = new ArrayList<Standing>();
+        for (int key : sortedKeys) {
+            result.addAll(resolveTier(group, byPoints.get(key), pts, gf, ga));
+        }
+        return result;
+    }
+
+    /**
+     * Resolves a group of teams all tied on the same points, using the FIFA
+     * recursive H2H procedure:
+     *
+     * 1. Apply H2H points → H2H GD → H2H GF among the current set.
+     * 2. If some teams separate, place them and recurse on the rest.
+     * 3. If ALL remain tied through step 1, use overall GD → overall GF.
+     * 4. If a SUBSET remains tied, recurse on that subset (re-applies H2H).
+     */
+    private static List<Standing> resolveTier(Group group,
+                                              List<String> tied,
+                                              Map<String, Integer> pts,
+                                              Map<String, Integer> gf,
+                                              Map<String, Integer> ga) {
+        var remaining = new ArrayList<>(tied);
+        var result = new ArrayList<Standing>();
+
+        while (remaining.size() > 1) {
+            var h2hPts = new HashMap<String, Integer>();
+            var h2hGf = new HashMap<String, Integer>();
+            var h2hGa = new HashMap<String, Integer>();
+            for (var t : remaining) { h2hPts.put(t, 0); h2hGf.put(t, 0); h2hGa.put(t, 0); }
+
+            for (var match : group.matches()) {
+                if (!match.finished()) continue;
+                var h = match.home(); var a = match.away();
+                if (!remaining.contains(h) || !remaining.contains(a)) continue;
+                int hg = match.homeGoals(), ag = match.awayGoals();
+                h2hGf.merge(h, hg, Integer::sum);
+                h2hGf.merge(a, ag, Integer::sum);
+                h2hGa.merge(h, ag, Integer::sum);
+                h2hGa.merge(a, hg, Integer::sum);
+                if (hg > ag) h2hPts.merge(h, 3, Integer::sum);
+                else if (ag > hg) h2hPts.merge(a, 3, Integer::sum);
+                else { h2hPts.merge(h, 1, Integer::sum); h2hPts.merge(a, 1, Integer::sum); }
+            }
+
+            // Sort remaining by H2H criteria (descending: higher is better)
+            var sorted = remaining.stream()
+                .sorted(Comparator.<String>comparingInt(t -> -h2hPts.getOrDefault(t, 0))
+                    .thenComparingInt(t -> -(h2hGf.getOrDefault(t, 0) - h2hGa.getOrDefault(t, 0)))
+                    .thenComparingInt(t -> -h2hGf.getOrDefault(t, 0)))
+                .toList();
+
+            // Find split: where does the H2H key change?
+            var firstKey = h2hKey(sorted.get(0), h2hPts, h2hGf, h2hGa);
+            int split = 1;
+            while (split < sorted.size() && h2hKey(sorted.get(split), h2hPts, h2hGf, h2hGa).equals(firstKey)) {
+                split++;
+            }
+
+            if (split == sorted.size()) {
+                // H2H failed to separate ANY team → fall through to overall GD/GF
+                sorted = remaining.stream()
+                    .sorted(Comparator.<String>comparingInt(t -> -(gf.get(t) - ga.get(t)))
+                        .thenComparingInt(t -> -gf.get(t)))
+                    .toList();
+                for (var t : sorted) {
+                    result.add(new Standing(t, pts.get(t), gf.get(t) - ga.get(t), gf.get(t)));
+                }
+                return result;
+            }
+
+            // Place the separated top teams
+            for (int i = 0; i < split; i++) {
+                var t = sorted.get(i);
+                result.add(new Standing(t, pts.get(t), gf.get(t) - ga.get(t), gf.get(t)));
+            }
+
+            // Continue with the rest (still tied) — recursive re-application
+            remaining = new ArrayList<>(sorted.subList(split, sorted.size()));
+        }
+
+        if (!remaining.isEmpty()) {
+            var t = remaining.get(0);
+            result.add(new Standing(t, pts.get(t), gf.get(t) - ga.get(t), gf.get(t)));
+        }
+        return result;
+    }
+
+    /** Composite H2H key: [points, goalDiff, goalsFor]. */
+    private static List<Integer> h2hKey(String team,
+                                        Map<String, Integer> h2hPts,
+                                        Map<String, Integer> h2hGf,
+                                        Map<String, Integer> h2hGa) {
+        return List.of(
+            h2hPts.getOrDefault(team, 0),
+            h2hGf.getOrDefault(team, 0) - h2hGa.getOrDefault(team, 0),
+            h2hGf.getOrDefault(team, 0)
+        );
     }
 
     /** Get the 8 best third-placed teams (ordered by points → GD → GF). */
