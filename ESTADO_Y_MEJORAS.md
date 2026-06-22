@@ -86,13 +86,15 @@ Actualmente funciona con IP desnuda o nip.io. Comprar un dominio (ej: `quiniela.
 
 Página tipo "Explorar" donde se puedan ver grupos públicos, puntuaciones, y ranking global.
 
-### 8. Estadísticas avanzadas
+### 8. Estadísticas avanzadas ✅ IMPLEMENTADO
 
-Por usuario:
-- % de aciertos por jornada
-- Rachas
-- Mejor/peor pronóstico
-- Comparativa con la media del grupo
+Por usuario en la página de Ajustes:
+- **% de aciertos** (partidos acertados / partidos pronosticados)
+- **Mejor racha** de partidos consecutivos acertados
+- **Comparativa con la media del grupo** (diferencia en verde/rojo)
+- **Puesto** numérico en el grupo
+- Calculado sobre todos los partidos finalizados (fase de grupos + eliminatorias)
+- Nueva columna `scoreMatch()` en HtmlRenderer con lógica de puntuación (incluye multiplicador de partido estrella)
 
 ### 9. Modo oscuro / claro ✅ YA IMPLEMENTADO
 
@@ -129,6 +131,6 @@ Tests automatizados (84 nuevos tests) que verifican:
 | Frontend | HTML generado server-side + CSS inline (~480 líneas) |
 | Persistencia | Serialización Java en disco (`data/quiniela-state.txt`) |
 | Líneas de código total | ~2500 |
-| Tests | 120 tests (JUnit 5) — 3 clases de tests pre-existentes + 2 nuevas de cobertura CSS y estructura de páginas |
+| Tests | 121 tests (JUnit 5) — 3 clases de tests pre-existentes + 2 nuevas de cobertura CSS y estructura de páginas |
 | Servidor | VPS Ubuntu 24.04, nginx 1.24 + Let's Encrypt |
 | Tiempo de actividad | 100% desde el despliegue |

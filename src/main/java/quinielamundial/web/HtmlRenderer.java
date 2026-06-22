@@ -3,6 +3,7 @@ package quinielamundial.web;
 import quinielamundial.domain.Group;
 import quinielamundial.domain.Match;
 import quinielamundial.domain.Member;
+import quinielamundial.domain.Prediction;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -18,6 +19,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class HtmlRenderer {
     public String homePage(Collection<Group> groups, String loggedInUser, Collection<Group> userGroups, String error) {
@@ -117,14 +119,64 @@ public class HtmlRenderer {
         var groupStats = userGroups.stream().map(g -> {
             var member = g.members().values().stream().filter(m -> m.name().equals(username)).findFirst();
             if (member.isEmpty()) return "";
-            var score = g.leaderboard(null).stream().filter(e -> e.member().name().equals(username)).findFirst();
+            var memberObj = member.get();
+            var leaderboard = g.leaderboard(null);
+            var score = leaderboard.stream().filter(e -> e.member().name().equals(username)).findFirst();
             var pts = score.map(s -> String.valueOf(s.score().totalPoints())).orElse("0");
             var exact = score.map(s -> String.valueOf(s.score().exactHits())).orElse("0");
             var outcome = score.map(s -> String.valueOf(s.score().outcomeHits())).orElse("0");
-            return "<tr><td><a href='/groups/" + g.code() + "'>" + escape(g.name()) + "</a></td>"
+            var rank = score.map(s -> String.valueOf(s.rank())).orElse("-");
+
+            // ── Advanced stats ──
+            var allMatches = Stream.concat(g.matches().stream(), g.knockoutMatches().stream())
+                .filter(Match::finished).sorted(Comparator.comparing(Match::kickoff)).toList();
+            var totalFinished = allMatches.size();
+            var predicted = 0;
+            var hitMatches = 0;
+            var currentStreak = 0;
+            var bestStreak = 0;
+            var memberCount = g.members().size();
+
+            for (var m : allMatches) {
+                var p = memberObj.predictions().get(m.id());
+                if (p == null) {
+                    currentStreak = 0; // streak broken by unpredicted match
+                    continue;
+                }
+                predicted++;
+                var points = scoreMatch(m, p, memberObj, g);
+                if (points > 0) {
+                    hitMatches++;
+                    currentStreak++;
+                    if (currentStreak > bestStreak) bestStreak = currentStreak;
+                } else {
+                    currentStreak = 0;
+                }
+            }
+
+            // Group average (total points of all members / member count)
+            var groupAvgPoints = memberCount > 0
+                ? g.members().values().stream()
+                    .mapToInt(other -> g.score(other, null).totalPoints())
+                    .average().orElse(0.0)
+                : 0.0;
+
+            var hitPct = predicted > 0 ? (double) hitMatches / predicted * 100 : 0.0;
+            var diffAvg = score.map(s -> s.score().totalPoints() - groupAvgPoints).orElse(0.0);
+            var diffAvgStr = diffAvg >= 0
+                ? "<span style='color:var(--green)'>+" + String.format("%.0f", diffAvg) + "</span>"
+                : "<span style='color:var(--red)'>" + String.format("%.0f", diffAvg) + "</span>";
+
+            return "<tr>"
+                + "<td><a href='/groups/" + g.code() + "'>" + escape(g.name()) + "</a></td>"
                 + "<td class='pts'>" + pts + "</td>"
+                + "<td>" + rank + "º</td>"
                 + "<td>" + exact + "</td>"
-                + "<td>" + outcome + "</td></tr>";
+                + "<td>" + outcome + "</td>"
+                + "<td>" + (predicted > 0 ? String.format("%.0f", hitPct) + "%" : "–") + "</td>"
+                + "<td>" + bestStreak + "</td>"
+                + "<td>" + diffAvgStr + "</td>"
+                + "</tr>";
         }).collect(Collectors.joining());
 
         return page("Ajustes",
@@ -141,13 +193,37 @@ public class HtmlRenderer {
             + "<button type='submit'>Cambiar contraseña</button>"
             + "</form></div>"
             + "<div class='card'><h2>📊 Mis estadísticas</h2>"
-            + "<div class='table-wrap'><table><thead><tr><th>Grupo</th><th>Pts</th><th>🎯 Exactos</th><th>🎲 Resultado</th></tr></thead><tbody>"
+            + "<div class='table-wrap'><table><thead><tr>"
+            + "<th>Grupo</th><th>Pts</th><th>#</th><th>🎯</th><th>🎲</th><th>%</th><th>🔥 Rachas</th><th>📊 vs Grupo</th>"
+            + "</tr></thead><tbody>"
             + groupStats
-            + "</tbody></table></div></div>"
+            + "</tbody></table>"
+            + "<p class='muted' style='margin-top:12px;font-size:clamp(11px,1vw,13px)'>"
+            + "<b>Pts</b> = Puntos · <b>#</b> = Puesto · <b>🎯</b> = Exactos · <b>🎲</b> = Resultado · "
+            + "<b>%</b> = Aciertos · <b>🔥</b> = Mejor racha · <b>📊</b> = Diferencia vs media del grupo"
+            + "</p>"
+            + "</div></div>"
             + "<form method='post' action='/logout' style='margin-top:16px'>"
             + "<button type='submit' style='background:#dc2626'>Cerrar sesión</button>"
             + "</form>"
             + "</div>", username);
+    }
+
+    /** Compute points earned for a single match given a member's prediction, including star multiplier. */
+    private int scoreMatch(Match match, Prediction prediction, Member member, Group group) {
+        if (!match.finished()) return 0;
+        int base;
+        if (prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals()) {
+            base = 3;
+        } else {
+            var actual = match.result();
+            base = (actual != null && prediction.outcome().equals(actual)) ? 1 : 0;
+        }
+        // Star match doubles group-stage points
+        if (!match.knockout() && member.starByJornada().getOrDefault(match.jornada(), -1) == match.id()) {
+            base *= 2;
+        }
+        return base;
     }
 
     public String groupPage(Group group, Member member, List<String> candidates, String championTeam, boolean tournamentStarted, int selectedJornada, String success) {
