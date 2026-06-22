@@ -454,15 +454,12 @@ public class HtmlRenderer {
         var groupHtml = "<div class='group-badge'>" + groupLetter(match.id()) + "</div>";
 
         // 3. Team scores for mobile compact list (inside each .team row)
-        // Also includes the star icon on mobile (hidden on desktop via .team-score{display:none})
         String homeTeamScore = "", awayTeamScore = "";
         if (finished) {
-            var starMark = starSelected ? "<span class='star-icon-team'>⭐</span>" : "";
-            homeTeamScore = "<span class='team-score'>" + match.homeGoals() + starMark + "</span>";
+            homeTeamScore = "<span class='team-score'>" + match.homeGoals() + "</span>";
             awayTeamScore = "<span class='team-score'>" + match.awayGoals() + "</span>";
         } else if (started && memberPrediction != null) {
-            var starMark = starSelected ? "<span class='star-icon-team'>⭐</span>" : "";
-            homeTeamScore = "<span class='team-score'>" + memberPrediction.homeGoals() + starMark + "</span>";
+            homeTeamScore = "<span class='team-score'>" + memberPrediction.homeGoals() + "</span>";
             awayTeamScore = "<span class='team-score'>" + memberPrediction.awayGoals() + "</span>";
         }
 
