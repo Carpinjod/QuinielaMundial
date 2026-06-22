@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpServer;
 import quinielamundial.domain.Group;
 import quinielamundial.domain.Member;
 import quinielamundial.persistence.StateStore;
+import quinielamundial.logging.Logger;
 import quinielamundial.service.AuthService;
 import quinielamundial.service.BracketResolver;
 import quinielamundial.service.MatchUpdateService;
@@ -23,12 +24,15 @@ import java.util.List;
 import java.util.Optional;
 
 public class QuinielaApp {
+    private static final Logger LOG = new Logger("QuinielaApp");
+
     private final java.nio.file.Path dataDir = java.nio.file.Path.of(System.getenv().getOrDefault("DATA_DIR", "data"));
     private final StateStore store = new StateStore(dataDir.resolve("quiniela-state.txt"));
     private final QuinielaService service = new QuinielaService();
     private final HtmlRenderer renderer = new HtmlRenderer();
     private final String adminUsername = System.getenv().getOrDefault("ADMIN_USER", "PJ");
     private AuthService auth;
+    private volatile boolean ready = false;
 
     public void start(int port) throws IOException {
         this.auth = new AuthService(dataDir);
@@ -51,13 +55,29 @@ public class QuinielaApp {
         server.createContext("/", this::handle);
         server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(8));
         server.start();
-        System.out.println("QuinielaMundial running on http://localhost:" + port);
+        ready = true;
+        LOG.info("Running on http://localhost:{}", port);
     }
 
     private void handle(HttpExchange exchange) throws IOException {
         try {
             var method = exchange.getRequestMethod();
             var path = exchange.getRequestURI().getPath();
+
+            if ("GET".equals(method) && "/health".equals(path)) {
+                renderJson(exchange, """
+                    {"status":"UP","timestamp":"%s"}""".formatted(java.time.Instant.now().toString()));
+                return;
+            }
+            if ("GET".equals(method) && "/health/readiness".equals(path)) {
+                if (ready) {
+                    renderJson(exchange, """
+                        {"status":"UP","groups":%d}""".formatted(service.groups().size()));
+                } else {
+                    exchange.sendResponseHeaders(503, -1);
+                }
+                return;
+            }
 
             if ("GET".equals(method) && "/".equals(path)) {
                 var loggedIn = resolveSession(exchange);

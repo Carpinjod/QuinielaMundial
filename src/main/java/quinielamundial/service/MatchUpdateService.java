@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import quinielamundial.domain.Group;
+import quinielamundial.logging.Logger;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -21,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 public class MatchUpdateService {
     private static final String API_URL = "https://api.openligadb.de/getmatchdata/wm26/2026";
     private static final long POLL_INTERVAL_SECONDS = 60; // 1 minute
+
+    private static final Logger LOG = new Logger("MatchUpdateService");
 
     private final List<Group> groups;
     private final Runnable onBracketUpdate;
@@ -86,7 +89,7 @@ public class MatchUpdateService {
     }
 
     public void start() {
-        System.out.println("MatchUpdateService: polling " + API_URL + " every " + POLL_INTERVAL_SECONDS + "s");
+        LOG.info("Polling {} every {}s", API_URL, POLL_INTERVAL_SECONDS);
         scheduler.scheduleAtFixedRate(this::poll, 10, POLL_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
@@ -104,7 +107,7 @@ public class MatchUpdateService {
 
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                System.err.println("MatchUpdateService: HTTP " + response.statusCode());
+                LOG.error("HTTP {}", response.statusCode());
                 return;
             }
 
@@ -117,10 +120,10 @@ public class MatchUpdateService {
             }
             if (updated > 0) {
                 onBracketUpdate.run();
-                System.out.println("MatchUpdateService: updated " + updated + " matches, brackets re-resolved");
+                LOG.info("Updated {} matches, brackets re-resolved", updated);
             }
         } catch (Exception e) {
-            System.err.println("MatchUpdateService: " + e.getMessage());
+            LOG.error("Poll failed: {}", e.getMessage());
         }
     }
 
@@ -150,7 +153,7 @@ public class MatchUpdateService {
                 map.put(key, apiMatch);
             }
         } catch (Exception e) {
-            System.err.println("MatchUpdateService: parse error: " + e.getMessage());
+            LOG.error("Parse error: {}", e.getMessage());
         }
         return map;
     }
@@ -167,9 +170,9 @@ public class MatchUpdateService {
             try {
                 group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
                 count++;
-                System.out.println("  ✓ " + match.home() + " " + apiMatch.homeGoals + "–" + apiMatch.awayGoals + " " + match.away());
+                LOG.info("✓ {} {}–{} {}", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
             } catch (Exception e) {
-                System.err.println("MatchUpdateService: update failed for match " + match.id() + ": " + e.getMessage());
+                LOG.error("Update failed for match {}: {}", match.id(), e.getMessage());
             }
         }
         return count;
