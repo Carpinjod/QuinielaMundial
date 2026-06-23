@@ -159,24 +159,26 @@ public class MatchUpdateService {
 
                 var key = normalize(team1) + "|" + normalize(team2) + "|" + dateOnly(dateTimeUtc);
 
-                // 1. Try final result first (resultTypeID=2)
-                Integer finalHome = extractResult(obj, 2, "pointsTeam1");
-                Integer finalAway = extractResult(obj, 2, "pointsTeam2");
-
-                if (finalHome != null && finalAway != null) {
-                    var apiMatch = new ApiMatch();
-                    apiMatch.dateTimeUtc = dateTimeUtc;
-                    apiMatch.team1 = team1;
-                    apiMatch.team2 = team2;
-                    apiMatch.homeGoals = finalHome;
-                    apiMatch.awayGoals = finalAway;
-                    apiMatch.isFinal = true;
-                    map.put(key, apiMatch);
-                    continue;
+                // 1. Final result: only when matchIsFinished=true (resultTypeID=2 = "Endergebnis")
+                var matchIsFinished = getBoolean(obj, "matchIsFinished");
+                if (matchIsFinished) {
+                    Integer finalHome = extractResult(obj, 2, "pointsTeam1");
+                    Integer finalAway = extractResult(obj, 2, "pointsTeam2");
+                    if (finalHome != null && finalAway != null) {
+                        var apiMatch = new ApiMatch();
+                        apiMatch.dateTimeUtc = dateTimeUtc;
+                        apiMatch.team1 = team1;
+                        apiMatch.team2 = team2;
+                        apiMatch.homeGoals = finalHome;
+                        apiMatch.awayGoals = finalAway;
+                        apiMatch.isFinal = true;
+                        map.put(key, apiMatch);
+                        continue;
+                    }
                 }
 
-                // 2. Live / in-progress result (resultTypeID=1) for unfinished matches
-                if (!getBoolean(obj, "matchIsFinished")) {
+                // 2. Live / in-progress result: resultTypeID=1 ("Halbzeit") as current score
+                if (!matchIsFinished) {
                     Integer liveHome = extractResult(obj, 1, "pointsTeam1");
                     Integer liveAway = extractResult(obj, 1, "pointsTeam2");
                     if (liveHome != null && liveAway != null) {
@@ -210,10 +212,18 @@ public class MatchUpdateService {
                     group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
                     finalCount++;
                     LOG.info("✓ {} {}–{} {}", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
+                } else if (apiMatch.isFinal && match.finished()) {
+                    // Already correctly registered — no-op
                 } else if (!apiMatch.isFinal && !match.finished()) {
                     group.updateLiveScore(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
                     liveCount++;
                     LOG.info("🔴 {} {}–{} {} (live)", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
+                } else if (!apiMatch.isFinal && match.finished()) {
+                    // Match was incorrectly marked as finished by previous bug (old parsing treated
+                    // resultTypeID=2 as final even when matchIsFinished=false). Revert and apply live score.
+                    group.revertFinished(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                    liveCount++;
+                    LOG.info("🔄 {} {}–{} {} (live, was incorrectly finished)", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
                 }
             } catch (Exception e) {
                 LOG.error("Update failed for match {}: {}", match.id(), e.getMessage());

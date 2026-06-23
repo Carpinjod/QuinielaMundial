@@ -74,10 +74,17 @@ public class Match implements Serializable {
 
     /** Update the live (in-progress) score without marking the match as finished. */
     public void updateLiveScore(int homeGoals, int awayGoals) {
-        if (finished) return;
         this.liveHomeGoals = homeGoals;
         this.liveAwayGoals = awayGoals;
         this.hasLiveScore = true;
+    }
+
+    /** Revert a finished match back to in-progress (e.g. when a past bug recorded an incorrect result). */
+    public void unfinish() {
+        this.finished = false;
+        this.homeGoals = null;
+        this.awayGoals = null;
+        this.hasLiveScore = false;
     }
 
     public void finish(int homeGoals, int awayGoals) {

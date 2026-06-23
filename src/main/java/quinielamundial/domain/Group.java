@@ -134,6 +134,18 @@ public class Group implements Serializable {
         matchById(matchId).updateLiveScore(homeGoals, awayGoals);
     }
 
+    /**
+     * Revert a finished match back to in-progress and set live score.
+     * Used when a match was incorrectly marked as finished (e.g. by old parsing bug).
+     * Triggers persistence so the fixed state survives restarts.
+     */
+    public void revertFinished(int matchId, int liveHomeGoals, int liveAwayGoals) {
+        var match = matchById(matchId);
+        match.unfinish();
+        match.updateLiveScore(liveHomeGoals, liveAwayGoals);
+        changed();
+    }
+
     public List<RankingEntry> leaderboard(String championTeam) {
         var sorted = members.values().stream()
             .map(member -> new RankingEntry(member, computeScore(member, championTeam), 0))
