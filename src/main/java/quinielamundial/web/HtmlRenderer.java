@@ -458,6 +458,9 @@ public class HtmlRenderer {
         if (finished) {
             homeTeamScore = "<span class='team-score'>" + match.homeGoals() + "</span>";
             awayTeamScore = "<span class='team-score'>" + match.awayGoals() + "</span>";
+        } else if (started && match.hasLiveScore()) {
+            homeTeamScore = "<span class='team-score live-score'>" + match.liveHomeGoals() + "</span>";
+            awayTeamScore = "<span class='team-score live-score'>" + match.liveAwayGoals() + "</span>";
         } else if (started && memberPrediction != null) {
             homeTeamScore = "<span class='team-score'>" + memberPrediction.homeGoals() + "</span>";
             awayTeamScore = "<span class='team-score'>" + memberPrediction.awayGoals() + "</span>";
@@ -483,6 +486,8 @@ public class HtmlRenderer {
         var scoreHtml = "";
         if (finished) {
             scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span>" + starBadge + "</div>";
+        } else if (started && match.hasLiveScore()) {
+            scoreHtml = "<div class='match-score live'><span class='score-home'>" + match.liveHomeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.liveAwayGoals() + "</span></div>";
         } else if (member == null) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (started) {
@@ -794,6 +799,9 @@ public class HtmlRenderer {
         if (teamsKnown && finished) {
             homeTeamScore = "<span class='team-score'>" + match.homeGoals() + "</span>";
             awayTeamScore = "<span class='team-score'>" + match.awayGoals() + "</span>";
+        } else if (teamsKnown && started && match.hasLiveScore()) {
+            homeTeamScore = "<span class='team-score live-score'>" + match.liveHomeGoals() + "</span>";
+            awayTeamScore = "<span class='team-score live-score'>" + match.liveAwayGoals() + "</span>";
         } else if (teamsKnown && started && memberPrediction != null) {
             homeTeamScore = "<span class='team-score'>" + memberPrediction.homeGoals() + "</span>";
             awayTeamScore = "<span class='team-score'>" + memberPrediction.awayGoals() + "</span>";
@@ -826,6 +834,8 @@ public class HtmlRenderer {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (finished) {
             scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span></div>";
+        } else if (started && match.hasLiveScore()) {
+            scoreHtml = "<div class='match-score live'><span class='score-home'>" + match.liveHomeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.liveAwayGoals() + "</span></div>";
         } else if (member == null) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (started) {
@@ -1480,6 +1490,7 @@ public class HtmlRenderer {
             + ".match-score,.pred-display{display:inline-flex;align-items:center;gap:clamp(2px,.3vw,6px);font-family:var(--font-mono);font-size:clamp(16px,1.6vw,22px);font-weight:700;color:var(--text);letter-spacing:-.03em}"
             // Team score inside each team row — always visible
             + ".team-score{display:inline-block;font-family:var(--font-mono);font-size:clamp(18px,4.5vw,26px);font-weight:700;color:var(--text);margin-left:auto;flex-shrink:0;line-height:1}"
+            + ".team-score.live-score,.match-score.live .score-home,.match-score.live .score-away{color:#22c55e}"
             + ".vs-badge{display:none}"
             + ".match-actions{display:flex;align-items:center;justify-content:center;gap:clamp(4px,.5vw,8px);width:100%;flex-wrap:wrap}"
             + ".match-actions .match-score,.match-actions .pred-display{display:none}"

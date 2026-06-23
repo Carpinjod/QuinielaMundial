@@ -29,6 +29,7 @@ public class MatchUpdateService {
 
     private final List<Group> groups;
     private final Consumer<List<Group>> onScoresUpdated;
+    private final Consumer<List<Group>> onLiveScoresUpdated;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final Gson gson = new Gson();
@@ -85,9 +86,12 @@ public class MatchUpdateService {
         Map.entry("Österreich", "Austria")
     );
 
-    public MatchUpdateService(List<Group> groups, Consumer<List<Group>> onScoresUpdated) {
+    public MatchUpdateService(List<Group> groups,
+                              Consumer<List<Group>> onScoresUpdated,
+                              Consumer<List<Group>> onLiveScoresUpdated) {
         this.groups = groups;
         this.onScoresUpdated = onScoresUpdated;
+        this.onLiveScoresUpdated = onLiveScoresUpdated;
     }
 
     public void start() {
@@ -116,45 +120,76 @@ public class MatchUpdateService {
             var apiMatches = parseApiMatches(response.body());
             if (apiMatches.isEmpty()) return;
 
-            var updatedGroups = new ArrayList<Group>();
+            var finalGroups = new ArrayList<Group>();
+            var liveGroups = new ArrayList<Group>();
+
             for (var group : groups) {
-                if (updateGroup(group, apiMatches) > 0) {
-                    updatedGroups.add(group);
-                }
+                var result = updateGroup(group, apiMatches);
+                if (result.finalCount > 0) finalGroups.add(group);
+                if (result.liveCount > 0) liveGroups.add(group);
             }
-            if (!updatedGroups.isEmpty()) {
-                onScoresUpdated.accept(updatedGroups);
-                LOG.info("Updated {} groups, brackets re-resolved", updatedGroups.size());
+
+            if (!finalGroups.isEmpty()) {
+                onScoresUpdated.accept(finalGroups);
+                LOG.info("Final results: {} groups updated", finalGroups.size());
+            }
+            if (!liveGroups.isEmpty()) {
+                onLiveScoresUpdated.accept(liveGroups);
+                LOG.info("Live scores: {} groups updated", liveGroups.size());
             }
         } catch (Exception e) {
             LOG.error("Poll failed: {}", e.getMessage());
         }
     }
 
-    /** Parse the OpenLigaDB JSON array into a map keyed by (team1, team2, date). */
+    /** Parse the OpenLigaDB JSON array into a map keyed by (team1, team2, date).
+     *  Extracts both final results (resultTypeID=2) and live scores (resultTypeID=1). */
     private Map<String, ApiMatch> parseApiMatches(String json) {
         var map = new HashMap<String, ApiMatch>();
         try {
             var arr = gson.fromJson(json, JsonArray.class);
-            var now = Instant.now();
             for (var elem : arr) {
                 var obj = elem.getAsJsonObject();
-                if (!isFinishedWithResult(obj)) continue;
+                var dateTimeUtc = getString(obj, "matchDateTimeUTC");
+                var team1 = getString(obj.getAsJsonObject("team1"), "teamName");
+                var team2 = getString(obj.getAsJsonObject("team2"), "teamName");
+                if (team1 == null || team2 == null) continue;
+                team1 = GERMAN_TO_ENGLISH.getOrDefault(team1, team1);
+                team2 = GERMAN_TO_ENGLISH.getOrDefault(team2, team2);
 
-                var apiMatch = new ApiMatch();
-                apiMatch.dateTimeUtc = getString(obj, "matchDateTimeUTC");
-                apiMatch.team1 = getString(obj.getAsJsonObject("team1"), "teamName");
-                apiMatch.team2 = getString(obj.getAsJsonObject("team2"), "teamName");
-                apiMatch.homeGoals = extractHomeGoals(obj);
-                apiMatch.awayGoals = extractAwayGoals(obj);
+                var key = normalize(team1) + "|" + normalize(team2) + "|" + dateOnly(dateTimeUtc);
 
-                if (apiMatch.team1 == null || apiMatch.team2 == null) continue;
-                apiMatch.team1 = GERMAN_TO_ENGLISH.getOrDefault(apiMatch.team1, apiMatch.team1);
-                apiMatch.team2 = GERMAN_TO_ENGLISH.getOrDefault(apiMatch.team2, apiMatch.team2);
+                // 1. Try final result first (resultTypeID=2)
+                Integer finalHome = extractResult(obj, 2, "pointsTeam1");
+                Integer finalAway = extractResult(obj, 2, "pointsTeam2");
 
-                // Key: normalized team names + date
-                var key = normalize(apiMatch.team1) + "|" + normalize(apiMatch.team2) + "|" + dateOnly(apiMatch.dateTimeUtc);
-                map.put(key, apiMatch);
+                if (finalHome != null && finalAway != null) {
+                    var apiMatch = new ApiMatch();
+                    apiMatch.dateTimeUtc = dateTimeUtc;
+                    apiMatch.team1 = team1;
+                    apiMatch.team2 = team2;
+                    apiMatch.homeGoals = finalHome;
+                    apiMatch.awayGoals = finalAway;
+                    apiMatch.isFinal = true;
+                    map.put(key, apiMatch);
+                    continue;
+                }
+
+                // 2. Live / in-progress result (resultTypeID=1) for unfinished matches
+                if (!getBoolean(obj, "matchIsFinished")) {
+                    Integer liveHome = extractResult(obj, 1, "pointsTeam1");
+                    Integer liveAway = extractResult(obj, 1, "pointsTeam2");
+                    if (liveHome != null && liveAway != null) {
+                        var apiMatch = new ApiMatch();
+                        apiMatch.dateTimeUtc = dateTimeUtc;
+                        apiMatch.team1 = team1;
+                        apiMatch.team2 = team2;
+                        apiMatch.homeGoals = liveHome;
+                        apiMatch.awayGoals = liveAway;
+                        apiMatch.isFinal = false;
+                        map.put(key, apiMatch);
+                    }
+                }
             }
         } catch (Exception e) {
             LOG.error("Parse error: {}", e.getMessage());
@@ -162,53 +197,40 @@ public class MatchUpdateService {
         return map;
     }
 
-    private int updateGroup(Group group, Map<String, ApiMatch> apiMatches) {
-        var count = 0;
+    private UpdateResult updateGroup(Group group, Map<String, ApiMatch> apiMatches) {
+        var finalCount = 0;
+        var liveCount = 0;
         for (var match : group.matches()) {
-            if (match.finished()) continue;
-
             var key = normalize(match.home()) + "|" + normalize(match.away()) + "|" + dateOnly(match.kickoff().toString());
             var apiMatch = apiMatches.get(key);
             if (apiMatch == null) continue;
 
             try {
-                group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
-                count++;
-                LOG.info("✓ {} {}–{} {}", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
+                if (apiMatch.isFinal && !match.finished()) {
+                    group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                    finalCount++;
+                    LOG.info("✓ {} {}–{} {}", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
+                } else if (!apiMatch.isFinal && !match.finished()) {
+                    group.updateLiveScore(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                    liveCount++;
+                    LOG.info("🔴 {} {}–{} {} (live)", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
+                }
             } catch (Exception e) {
                 LOG.error("Update failed for match {}: {}", match.id(), e.getMessage());
             }
         }
-        return count;
+        return new UpdateResult(finalCount, liveCount);
     }
 
-    private boolean isFinishedWithResult(JsonObject obj) {
-        if (!getBoolean(obj, "matchIsFinished")) return false;
-        var results = obj.getAsJsonArray("matchResults");
-        if (results == null) return false;
-        for (var r : results) {
-            var ro = r.getAsJsonObject();
-            if (getInt(ro, "resultTypeID") == 2) return true;
-        }
-        return false;
-    }
-
-    private Integer extractHomeGoals(JsonObject obj) {
+    /** Extract a specific result type from matchResults array, e.g. resultTypeID=2 (final) or =1 (live). */
+    private Integer extractResult(JsonObject obj, int resultTypeId, String pointKey) {
         var results = obj.getAsJsonArray("matchResults");
         if (results == null) return null;
         for (var r : results) {
             var ro = r.getAsJsonObject();
-            if (getInt(ro, "resultTypeID") == 2) return getInt(ro, "pointsTeam1");
-        }
-        return null;
-    }
-
-    private Integer extractAwayGoals(JsonObject obj) {
-        var results = obj.getAsJsonArray("matchResults");
-        if (results == null) return null;
-        for (var r : results) {
-            var ro = r.getAsJsonObject();
-            if (getInt(ro, "resultTypeID") == 2) return getInt(ro, "pointsTeam2");
+            if (getInt(ro, "resultTypeID") == resultTypeId) {
+                return getInt(ro, pointKey);
+            }
         }
         return null;
     }
@@ -238,11 +260,15 @@ public class MatchUpdateService {
         return iso.length() >= 10 ? iso.substring(0, 10) : iso;
     }
 
+    /** Result of a single group update pass. */
+    private record UpdateResult(int finalCount, int liveCount) {}
+
     private static class ApiMatch {
         String dateTimeUtc;
         String team1;
         String team2;
         Integer homeGoals;
         Integer awayGoals;
+        boolean isFinal;
     }
 }

@@ -28,6 +28,11 @@ public class Match implements Serializable {
     private Integer awayGoals;
     private boolean finished;
 
+    /** Live (in-progress) scores — NOT persisted, re-fetched from API on restart. */
+    private transient boolean hasLiveScore;
+    private transient int liveHomeGoals;
+    private transient int liveAwayGoals;
+
     /** Constructor for group-stage matches (home & away known). */
     public Match(int id, int jornada, String home, String away, Instant kickoff) {
         this(id, jornada, ROUND_GROUP, home, away, kickoff);
@@ -61,10 +66,25 @@ public class Match implements Serializable {
     }
 
     public boolean isStarted() { return finished || Instant.now().isAfter(kickoff); }
+
+    /** Live score in progress (set from API poll, NOT persisted). */
+    public boolean hasLiveScore() { return hasLiveScore; }
+    public int liveHomeGoals() { return liveHomeGoals; }
+    public int liveAwayGoals() { return liveAwayGoals; }
+
+    /** Update the live (in-progress) score without marking the match as finished. */
+    public void updateLiveScore(int homeGoals, int awayGoals) {
+        if (finished) return;
+        this.liveHomeGoals = homeGoals;
+        this.liveAwayGoals = awayGoals;
+        this.hasLiveScore = true;
+    }
+
     public void finish(int homeGoals, int awayGoals) {
         if (!teamsKnown() && round >= ROUND_R32)
             throw new IllegalStateException("No se puede finalizar un partido KO sin equipos asignados.");
         this.homeGoals = homeGoals; this.awayGoals = awayGoals; this.finished = true;
+        this.hasLiveScore = false; // live score is superseded by final result
     }
 
     /** Winning team name, or null if not finished / draw (KO can't end in draw). */

@@ -129,6 +129,11 @@ public class Group implements Serializable {
         changed();
     }
 
+    /** Update live (in-progress) score. Does NOT trigger persistence. */
+    public void updateLiveScore(int matchId, int homeGoals, int awayGoals) {
+        matchById(matchId).updateLiveScore(homeGoals, awayGoals);
+    }
+
     public List<RankingEntry> leaderboard(String championTeam) {
         var sorted = members.values().stream()
             .map(member -> new RankingEntry(member, computeScore(member, championTeam), 0))

@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import quinielamundial.domain.Group;
+import quinielamundial.domain.Match;
 import quinielamundial.domain.Member;
 import quinielamundial.persistence.StateStore;
 import quinielamundial.logging.Logger;
@@ -49,23 +50,18 @@ public class QuinielaApp {
         // Resolve knockout brackets for all groups (populates R32 from current standings)
         service.resolveAllBrackets();
         store.save(service.groups(), service.tournamentChampion());
-        var updater = new MatchUpdateService(service.groups().stream().toList(), updatedGroups -> {
-            for (var g : service.groups()) {
-                BracketResolver.resolveBracket(g);
-            }
-            store.save(service.groups(), service.tournamentChampion());
-            // Push live scores to SSE clients of updated groups
-            var gson = new Gson();
-            for (var g : updatedGroups) {
-                var stream = scoreStreams.get(g.code());
-                if (stream == null || !stream.hasClients()) continue;
-                var scores = g.allMatches().stream()
-                    .filter(m -> m.isStarted())
-                    .map(m -> new LiveScore(m.id(), m.homeGoals(), m.awayGoals(), m.finished()))
-                    .toList();
-                stream.broadcast(gson.toJson(scores));
-            }
-        });
+        var updater = new MatchUpdateService(service.groups().stream().toList(),
+            // Final result callback — resolve brackets, persist, broadcast
+            updatedGroups -> {
+                for (var g : service.groups()) {
+                    BracketResolver.resolveBracket(g);
+                }
+                store.save(service.groups(), service.tournamentChampion());
+                broadcastLiveScores(updatedGroups);
+            },
+            // Live score callback — broadcast only (NO persistence, NO bracket re-resolve)
+            updatedGroups -> broadcastLiveScores(updatedGroups)
+        );
         updater.start();
         var server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/", this::handle);
@@ -262,8 +258,8 @@ public class QuinielaApp {
 
                 if ("GET".equals(method) && tail.equals(code + "/api/scores")) {
                     var scores = group.allMatches().stream()
-                        .filter(m -> m.isStarted())
-                        .map(m -> new LiveScore(m.id(), m.homeGoals(), m.awayGoals(), m.finished()))
+                        .filter(m -> m.isStarted() || m.hasLiveScore())
+                        .map(m -> matchToLiveScore(m))
                         .toList();
                     renderJson(exchange, new Gson().toJson(scores));
                     return;
@@ -549,6 +545,29 @@ public class QuinielaApp {
         return service.groups().stream()
             .filter(g -> g.members().values().stream().anyMatch(m -> m.name().equals(username)))
             .collect(java.util.stream.Collectors.toList());
+    }
+
+    /** Push live scores to SSE clients of the given groups. */
+    private void broadcastLiveScores(List<Group> groups) {
+        var gson = new Gson();
+        for (var g : groups) {
+            var stream = scoreStreams.get(g.code());
+            if (stream == null || !stream.hasClients()) continue;
+            var scores = g.allMatches().stream()
+                .filter(m -> m.isStarted() || m.hasLiveScore())
+                .map(m -> matchToLiveScore(m))
+                .toList();
+            stream.broadcast(gson.toJson(scores));
+        }
+    }
+
+    /** Map a match to a LiveScore record, using live score if available. */
+    private static LiveScore matchToLiveScore(Match m) {
+        if (m.finished())
+            return new LiveScore(m.id(), m.homeGoals(), m.awayGoals(), true);
+        if (m.hasLiveScore())
+            return new LiveScore(m.id(), m.liveHomeGoals(), m.liveAwayGoals(), false);
+        return new LiveScore(m.id(), 0, 0, false);
     }
 
     private record LiveScore(int id, int homeGoals, int awayGoals, boolean finished) {}
