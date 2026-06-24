@@ -213,7 +213,19 @@ public class MatchUpdateService {
                     finalCount++;
                     LOG.info("✓ {} {}–{} {}", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
                 } else if (apiMatch.isFinal && match.finished()) {
-                    // Already correctly registered — no-op
+                    // Match already marked as finished — verify scores match (old bug may have
+                    // recorded wrong result, e.g. halftime 0-0 as final). Re-register if different.
+                    var storedHome = match.homeGoals();
+                    var storedAway = match.awayGoals();
+                    if (storedHome == null || storedAway == null
+                        || storedHome != apiMatch.homeGoals || storedAway != apiMatch.awayGoals) {
+                        group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                        finalCount++;
+                        LOG.info("🔄 {} {}–{} {} (corrected from {}-{})",
+                            match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away(),
+                            storedHome == null ? "?" : storedHome,
+                            storedAway == null ? "?" : storedAway);
+                    }
                 } else if (!apiMatch.isFinal && !match.finished()) {
                     group.updateLiveScore(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
                     liveCount++;
