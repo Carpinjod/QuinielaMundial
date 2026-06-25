@@ -23,7 +23,7 @@ import java.util.function.Consumer;
 
 public class MatchUpdateService {
     private static final String API_URL = "https://api.openligadb.de/getmatchdata/wm26/2026";
-    private static final long POLL_INTERVAL_SECONDS = 60; // 1 minute
+    private static final long POLL_INTERVAL_SECONDS = 15; // 15 seconds
 
     private static final Logger LOG = new Logger("MatchUpdateService");
 
