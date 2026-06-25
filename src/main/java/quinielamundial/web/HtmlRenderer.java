@@ -601,105 +601,234 @@ public class HtmlRenderer {
         return "<details class='predictions-toggle'><summary>👥 Pronósticos (" + count + "/" + group.members().size() + ")</summary><ul>" + items + "</ul></details>";
     }
 
-    // ── Knockout bracket view (accordion, like group-stage jornadas) ──
+    // ── Knockout bracket view (visual CSS Grid bracket tree) ──
     private String bracketView(Group group, Member member, boolean isCreator, boolean tournamentStarted, String championTeam) {
         var koMatches = group.knockoutMatches();
         var groupFinished = group.groupStageFinished();
 
-        // Group by round
-        var byRound = koMatches.stream()
-            .collect(Collectors.groupingBy(Match::round, LinkedHashMap::new, Collectors.toList()));
-
-        // Determine in-progress round and which to open by default
-        int inProgressRound = 0;
-        int firstUpcoming = Integer.MAX_VALUE;
-        int maxRound = 0;
-        for (var match : koMatches) {
-            if (match.round() > maxRound) maxRound = match.round();
-            if (!match.finished() && match.isStarted()) inProgressRound = match.round();
-            if (!match.isStarted() && match.round() < firstUpcoming) firstUpcoming = match.round();
-        }
-        int defaultOpenRound;
-        if (inProgressRound > 0) {
-            defaultOpenRound = inProgressRound;
-        } else if (firstUpcoming < Integer.MAX_VALUE) {
-            defaultOpenRound = firstUpcoming;
-        } else {
-            defaultOpenRound = maxRound; // all finished, open last round
-        }
-
-        var sb = new StringBuilder();
-        for (var entry : byRound.entrySet()) {
-            int round = entry.getKey();
-            var matches = entry.getValue();
-
-            String roundName = switch (round) {
-                case Match.ROUND_R32 -> "Dieciseisavos";
-                case Match.ROUND_R16 -> "Octavos";
-                case Match.ROUND_QF  -> "Cuartos";
-                case Match.ROUND_SF  -> "Semifinales";
-                case Match.ROUND_3RD -> "Tercer puesto";
-                case Match.ROUND_FIN -> "Final";
-                default -> "";
-            };
-
-            // Round statistics
-            var total = matches.size();
-            var finished = (int) matches.stream().filter(Match::finished).count();
-            var started = (int) matches.stream().filter(m -> !m.finished() && m.isStarted()).count();
-            var pending = total - finished - started;
-            var isCurrent = round == inProgressRound && started > 0;
-            var isOpen = round == defaultOpenRound;
-
-            // ── Accordion section ──
-            sb.append("<details class='jor-section'")
-                .append(isOpen ? " open" : "")
-                .append(">")
-                .append("<summary class='jor-header")
-                .append(isCurrent ? " jor-current" : "")
-                .append("'><span class='jor-title'><span class='jor-num'>").append(escape(roundName)).append("</span>")
-                .append(isCurrent ? " <span class='jor-now'>En vivo</span>" : "")
-                .append("</span><span class='jor-meta'>")
-                .append(total).append(" partidos")
-                .append(pending > 0 ? " · <span class='jor-pending'>" + pending + " pendientes</span>" : "")
-                .append(finished > 0 ? " · " + finished + " finalizados" : "")
-                .append("</span></summary>")
-                .append("<div class='jor-matches'>");
-
-            // ── Momentum card for this round ──
+        // Momentum cards per round (render above bracket)
+        var momentumHtml = new StringBuilder();
+        for (var round : List.of(Match.ROUND_R32, Match.ROUND_R16, Match.ROUND_QF, Match.ROUND_SF, Match.ROUND_3RD, Match.ROUND_FIN)) {
             var momentum = group.computeRoundMomentum(round, championTeam);
             if (momentum.anyFinished()) {
-                sb.append(momentumCard(momentum));
+                momentumHtml.append(momentumCard(momentum));
             }
-
-            // ── Knockout cards (wrapped for pending filter) ──
-            for (var match : matches) {
-                var isActive = member != null && !match.finished() && match.teamsKnown();
-                sb.append("<div class='match-wrapper' data-active=\"").append(isActive).append("\">")
-                    .append(knockoutCard(group, match, member, isCreator))
-                    .append("</div>");
-            }
-
-            sb.append("</div></details>");
         }
 
-        // ── Filter bar ──
-        var filterBar = "<div class='filter-bar'>"
-            + "<label class='filter-pending'><input type='checkbox' id='filterPending' onclick='togglePendingFilter()'>"
-            + "<span>Solo pendientes</span></label>"
-            + "<span class='filter-info' id='filterInfo'></span>"
-            + "</div>";
-
-        // ── Wrap in accordion container ──
-        var accordion = "<div class='jor-accordion'>" + sb + "</div>";
+        // Visual bracket
+        var bracket = bracketVisualization(group, member, isCreator, tournamentStarted, championTeam);
 
         if (!groupFinished) {
             return "<div class='ko-pending'><div class='ko-pending-icon'>🔒</div><h2>Esperando a la fase de grupos</h2>"
                 + "<p>Las eliminatorias se desbloquearán cuando los 72 partidos de la fase de grupos tengan resultado.</p></div>"
-                + filterBar + accordion;
+                + momentumHtml.toString()
+                + bracket;
         }
 
-        return filterBar + accordion;
+        return momentumHtml.toString() + bracket;
+    }
+
+    // ═══════════════════════════════════════════
+    //  BRACKET VISUALIZATION — CSS Grid bracket tree
+    // ═══════════════════════════════════════════
+
+    /** Bracket match order per round, top-to-bottom as they appear in the tree. */
+    private static final java.util.Map<Integer, List<Integer>> BRACKET_ORDER = java.util.Map.of(
+        Match.ROUND_R32, List.of(73,75,74,77,83,84,81,82,76,78,79,80,86,88,85,87),
+        Match.ROUND_R16, List.of(89,90,93,94,91,92,95,96),
+        Match.ROUND_QF,  List.of(97,98,99,100),
+        Match.ROUND_SF,  List.of(101,102),
+        Match.ROUND_FIN,  List.of(104)
+    );
+
+    private static final java.util.Map<Integer, String> ROUND_SHORT = java.util.Map.of(
+        Match.ROUND_R32, "R32", Match.ROUND_R16, "R16", Match.ROUND_QF, "QF",
+        Match.ROUND_SF, "SF", Match.ROUND_3RD, "3rd", Match.ROUND_FIN, "FIN"
+    );
+
+    /** CSS Grid-based bracket tree replacing the accordion for knockout view. */
+    private String bracketVisualization(Group group, Member member, boolean isCreator, boolean tournamentStarted, String championTeam) {
+        var koMatches = group.knockoutMatches();
+        var groupFinished = group.groupStageFinished();
+        var byId = new java.util.HashMap<Integer, Match>();
+        for (var m : koMatches) byId.put(m.id(), m);
+
+        // Total rows in the bracket grid
+        var totalRows = 16;
+        var grid = new StringBuilder();
+
+        // Round labels header
+        grid.append("<div class='bracket-labels'>")
+            .append("<div class='bracket-label'>Dieciseisavos</div>")
+            .append("<div class='bracket-label'>Octavos</div>")
+            .append("<div class='bracket-label'>Cuartos</div>")
+            .append("<div class='bracket-label'>Semifinales</div>")
+            .append("<div class='bracket-label'>Final</div>")
+            .append("<div class='bracket-label champion-label'>🏆 Campeón</div>")
+            .append("</div>");
+
+        grid.append("<div class='bracket-grid'>");
+
+        // Render each round
+        var roundOrder = List.of(Match.ROUND_R32, Match.ROUND_R16, Match.ROUND_QF, Match.ROUND_SF, Match.ROUND_FIN);
+        // grid-column for each round: R32=1, R16=3, QF=5, SF=7, FIN=9 (+ connector cols 2,4,6,8)
+        var colByRound = java.util.Map.of(
+            Match.ROUND_R32, 1, Match.ROUND_R16, 3, Match.ROUND_QF, 5,
+            Match.ROUND_SF, 7, Match.ROUND_FIN, 9
+        );
+
+        for (int ri = 0; ri < roundOrder.size(); ri++) {
+            var round = roundOrder.get(ri);
+            var matchIds = BRACKET_ORDER.get(round);
+            if (matchIds == null || matchIds.isEmpty()) continue;
+            var count = matchIds.size();
+            var rowSpan = totalRows / count;
+            var col = colByRound.get(round);
+
+            for (int mi = 0; mi < count; mi++) {
+                var match = byId.get(matchIds.get(mi));
+                if (match == null) continue;
+                var rowStart = mi * rowSpan + 1; // CSS grid rows are 1-indexed
+                var rowEnd = rowStart + rowSpan;
+
+                grid.append("<div class='bracket-cell' style='grid-column:")
+                    .append(col).append(";grid-row:").append(rowStart).append("/").append(rowEnd).append("'>")
+                    .append(bracketMatchCard(group, match, member, isCreator))
+                    .append("</div>");
+            }
+
+            // Add connectors to next round — one per pair of matches, spanning next round's rowSpan
+            if (ri < roundOrder.size() - 1) {
+                var nextRowSpan = rowSpan * 2;
+                var connCol = col + 1;
+                for (int pi = 0; pi < count; pi += 2) {
+                    var connRowStart = pi * rowSpan + 1;
+                    grid.append("<div class='bracket-connector' style='grid-column:")
+                        .append(connCol).append(";grid-row:").append(connRowStart).append("/").append(connRowStart + nextRowSpan).append("'>")
+                        .append("<div class='conn-lines'><span class='l-top'></span><span class='l-bot'></span></div>")
+                        .append("</div>");
+                }
+            }
+        }
+
+        // Champion label cell (far right)
+        var championTeamName = group.members().values().stream()
+            .map(Member::championBet)
+            .filter(java.util.Objects::nonNull)
+            .findFirst().orElse(null);
+        grid.append("<div class='bracket-champion' style='grid-column:11;grid-row:1/17'>")
+            .append("<div class='champion-icon'>🏆</div>")
+            .append("<div class='champion-label'>Campeón</div>");
+        if (championTeamName != null) {
+            grid.append("<div class='champion-team'>").append(flagOf(championTeamName)).append(" ").append(escape(teamEs(championTeamName))).append("</div>");
+        }
+        grid.append("</div>");
+
+        grid.append("</div>"); // .bracket-grid
+
+        // 3rd place match (below bracket)
+        var match103 = byId.get(103);
+        var match103html = match103 != null ? bracketMatchCard(group, match103, member, isCreator) : "";
+
+        var bracketHtml = grid.toString();
+
+        if (!groupFinished) {
+            return "<div class='ko-pending'><div class='ko-pending-icon'>🔒</div><h2>Esperando a la fase de grupos</h2>"
+                + "<p>Las eliminatorias se desbloquearán cuando los 72 partidos de la fase de grupos tengan resultado.</p></div>"
+                + "<div class='bracket-wrapper'>" + bracketHtml
+                + (match103html.isEmpty() ? "" : "<div class='bracket-third-place'><div class='bracket-labels'><div class='bracket-label'>Tercer puesto</div><div></div><div></div><div></div><div></div><div></div></div><div class='third-grid'>" + match103html + "</div></div>")
+                + "</div>";
+        }
+
+        return "<div class='bracket-wrapper'>" + bracketHtml
+            + (match103html.isEmpty() ? "" : "<div class='bracket-third-place'><div class='bracket-labels'><div class='bracket-label'>Tercer puesto</div><div></div><div></div><div></div><div></div><div></div></div><div class='third-grid'>" + match103html + "</div></div>")
+            + "</div>";
+    }
+
+    /** Compact match card for bracket display. Only essential info, no predictions toggle. */
+    private String bracketMatchCard(Group group, Match match, Member member, boolean isCreator) {
+        var started = match.isStarted();
+        var finished = match.finished();
+        var teamsKnown = match.teamsKnown();
+        var memberPrediction = member == null ? null : member.predictions().get(match.id());
+
+        // Score display
+        String scoreDisplay;
+        String statusIcon = "";
+        boolean isLive = false;
+
+        if (!teamsKnown) {
+            scoreDisplay = "<span class='bracket-idle'>🔒</span>";
+        } else if (finished) {
+            scoreDisplay = "<span class='bracket-score'>" + match.homeGoals() + "<span class='bracket-sep'>–</span>" + match.awayGoals() + "</span>";
+            statusIcon = predictionResultBadge(match, memberPrediction, false, group);
+        } else if (started && match.hasLiveScore()) {
+            scoreDisplay = "<span class='bracket-score live'>" + match.liveHomeGoals() + "<span class='bracket-sep'>–</span>" + match.liveAwayGoals() + "</span>";
+            isLive = true;
+        } else if (member == null) {
+            scoreDisplay = "<span class='bracket-idle'>🔒</span>";
+        } else if (started) {
+            scoreDisplay = memberPrediction == null
+                ? "<span class='bracket-idle'>🔴</span>"
+                : "<span class='bracket-score'>" + memberPrediction.homeGoals() + "<span class='bracket-sep'>–</span>" + memberPrediction.awayGoals() + "</span>";
+        } else {
+            scoreDisplay = "<span class='bracket-idle'>–</span>";
+        }
+
+        // Home team
+        String homeHtml;
+        if (!teamsKnown && (match.home() == null || match.away() == null)) {
+            var label = matchSourceLabel(match.id());
+            homeHtml = "<span class='bracket-team home'><span class='team-name muted'>" + escape(label[0]) + "</span></span>";
+        } else {
+            homeHtml = "<span class='bracket-team home'><span class='flag'>" + flagOf(match.home()) + "</span><span class='team-name'>" + escape(teamEs(match.home())) + "</span></span>";
+        }
+
+        // Away team
+        String awayHtml;
+        if (!teamsKnown && (match.home() == null || match.away() == null)) {
+            var label = matchSourceLabel(match.id());
+            awayHtml = "<span class='bracket-team away'><span class='team-name muted'>" + escape(label[1]) + "</span></span>";
+        } else {
+            awayHtml = "<span class='bracket-team away'><span class='flag'>" + flagOf(match.away()) + "</span><span class='team-name'>" + escape(teamEs(match.away())) + "</span></span>";
+        }
+
+        // Prediction form (inline, compact)
+        String formHtml = "";
+        var isFormMode = teamsKnown && member != null && !started;
+        if (isFormMode) {
+            var homeVal = memberPrediction == null ? "" : String.valueOf(memberPrediction.homeGoals());
+            var awayVal = memberPrediction == null ? "" : String.valueOf(memberPrediction.awayGoals());
+            var confirmAttr = memberPrediction == null ? "" : " data-confirm=\"¿Actualizar?\"";
+            formHtml = "<form method='post' action='/groups/" + group.code() + "/prediction' class='bracket-form'" + confirmAttr + ">"
+                + hiddenToken(member.token()) + "<input type='hidden' name='jornada' value='0'>"
+                + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
+                + "<div class='bracket-form-inputs'>"
+                + "<input name='homeGoals' type='number' min='0' class='bracket-input' value='" + homeVal + "' placeholder='0' required>"
+                + "<span class='bracket-sep'>–</span>"
+                + "<input name='awayGoals' type='number' min='0' class='bracket-input' value='" + awayVal + "' placeholder='0' required>"
+                + "</div>"
+                + "<button type='submit' class='bracket-btn'>" + (memberPrediction == null ? "✅" : "✏️") + "</button>"
+                + "</form>";
+        }
+
+        // Live badge
+        var liveBadge = isLive ? "<span class='bracket-live'><span class='live-dot'></span></span>" : "";
+
+        var roundLabel = ROUND_SHORT.getOrDefault(match.round(), "");
+        var kickoffLabel = formatKickoffCompact(match.kickoff());
+
+        return "<div class='bracket-match-card' data-match-id='" + match.id() + "'>"
+            + "<div class='bracket-meta'>" + kickoffLabel + " <span class='bracket-round-badge'>" + roundLabel + "</span></div>"
+            + "<div class='bracket-match-body'>"
+            + "<div class='bracket-teams'>"
+            + homeHtml
+            + (formHtml.isEmpty() ? scoreDisplay : formHtml)
+            + awayHtml
+            + "</div>"
+            + "</div>"
+            + "<div class='bracket-footer'>" + liveBadge + statusIcon + "</div>"
+            + "</div>";
     }
 
     // ── Round momentum card ──
@@ -1710,6 +1839,81 @@ public class HtmlRenderer {
             + ".ko-pending-icon{font-size:clamp(40px,5vw,64px);display:block;margin-bottom:clamp(16px,2vw,24px)}"
             + ".ko-pending h2{font-size:clamp(22px,2.8vw,32px);font-weight:800;margin-bottom:clamp(8px,1vw,14px);letter-spacing:-.03em;background:var(--gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}"
             + ".ko-pending p{color:var(--text-sec);font-size:clamp(15px,1.4vw,18px);max-width:min(500px,100%);margin:0 auto;line-height:1.7}"
+
+            // ═══════════════════════════════════════
+            //  BRACKET VISUALIZATION — CSS Grid tree
+            // ═══════════════════════════════════════
+            + ".bracket-wrapper{overflow-x:auto;overflow-y:visible;padding-bottom:clamp(16px,2vw,24px);-webkit-overflow-scrolling:touch;margin:0 calc(-1 * clamp(12px,2vw,24px));padding-left:clamp(12px,2vw,24px);padding-right:clamp(12px,2vw,24px)}"
+            + ".bracket-labels{display:flex;gap:0;margin-bottom:clamp(8px,1vw,14px);min-width:900px}"
+            + ".bracket-label{flex:1 1 0;font-size:clamp(11px,1vw,13px);font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:.06em;text-align:center;padding:clamp(4px,.5vw,8px)}"
+            + ".bracket-label.champion-label{flex:0 0 80px;text-align:center;writing-mode:vertical-lr;transform:rotate(180deg);font-size:clamp(10px,.9vw,12px)}"
+            // Grid: R32 | conn | R16 | conn | QF | conn | SF | conn | FIN | spacer | champion
+            + ".bracket-grid{display:grid;grid-template-columns:minmax(130px,1fr) 32px minmax(130px,1fr) 32px minmax(130px,1fr) 32px minmax(130px,1fr) 32px minmax(140px,1fr) 20px 80px;grid-template-rows:repeat(16,1fr);min-width:900px;gap:0;position:relative;align-items:stretch}"
+            // Each round column is flush to its neighbors; connector columns sit between them
+            + ".bracket-cell{display:flex;align-items:center;justify-content:stretch;min-height:0;padding:2px}"
+            // Connector column: thin column between rounds for bracket lines
+            + ".bracket-connector{position:relative;display:flex;align-items:stretch;justify-content:center;min-height:0}"
+            + ".conn-lines{position:absolute;inset:0;pointer-events:none}"
+            // Draw the bracket connector shape
+            // Vertical line at center (50% width), from top feeder (25% h) to bottom feeder (75% h)
+            + ".conn-lines::before{content:'';position:absolute;left:50%;top:25%;bottom:25%;border-left:2px solid var(--border)}"
+            // Horizontal line from center going RIGHT to receiving match
+            + ".conn-lines::after{content:'';position:absolute;top:calc(50% - 1px);left:50%;right:0;border-top:2px solid var(--border)}"
+            // Top horizontal prong coming FROM left feeder match TO center vertical
+            + ".conn-lines .l-top{position:absolute;left:0;right:50%;top:25%;border-top:2px solid var(--border)}"
+            // Bottom horizontal prong coming FROM left feeder match TO center vertical
+            + ".conn-lines .l-bot{position:absolute;left:0;right:50%;top:75%;border-top:2px solid var(--border)}"
+            // Match card compact
+            + ".bracket-match-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:clamp(6px,.8vw,10px) clamp(8px,1vw,12px);width:100%;display:flex;flex-direction:column;gap:clamp(2px,.3vw,5px);transition:border-color .2s ease,box-shadow .2s ease;position:relative;overflow:hidden;min-height:60px}"
+            + ".bracket-match-card::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--gradient);border-radius:3px 0 0 3px;opacity:.4}"
+            + ".bracket-match-card:hover{border-color:var(--border-light);box-shadow:var(--shadow-sm)}"
+            // Meta: kickoff time + round badge
+            + ".bracket-meta{display:flex;align-items:center;gap:clamp(4px,.5vw,8px);font-size:clamp(9px,.75vw,11px);color:var(--text-dim);font-family:var(--font-mono);line-height:1}"
+            + ".bracket-round-badge{font-size:clamp(7px,.6vw,9px);font-weight:700;letter-spacing:.04em;color:var(--text-sec);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px}"
+            // Body: teams + score
+            + ".bracket-match-body{flex:1;display:flex;align-items:center}"
+            + ".bracket-teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:clamp(4px,.5vw,8px);width:100%}"
+            + ".bracket-team{display:flex;align-items:center;gap:clamp(4px,.5vw,8px);min-width:0;overflow:hidden}"
+            + ".bracket-team.home{justify-content:flex-start}"
+            + ".bracket-team.away{justify-content:flex-end}"
+            + ".bracket-team .flag{font-size:clamp(14px,2vw,18px)}"
+            + ".bracket-team .team-name{font-size:clamp(11px,1.1vw,13px);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+            + ".bracket-team .team-name.muted{color:var(--text-dim);font-weight:400;font-style:italic}"
+            // Score
+            + ".bracket-score{font-family:var(--font-mono);font-size:clamp(14px,1.3vw,18px);font-weight:800;color:var(--text);display:inline-flex;align-items:center;gap:2px;white-space:nowrap}"
+            + ".bracket-score.live{color:#22c55e}"
+            + ".bracket-sep{color:var(--text-dim);font-weight:600}"
+            + ".bracket-idle{color:var(--text-dim);font-size:clamp(12px,1.1vw,14px);text-align:center;display:inline-block;width:100%}"
+            // Live badge
+            + ".bracket-live{display:inline-flex;align-items:center;gap:4px}"
+            + ".bracket-live .live-dot{width:6px;height:6px}"
+            // Footer: live + result
+            + ".bracket-footer{display:flex;align-items:center;justify-content:center;gap:clamp(4px,.5vw,8px);font-size:clamp(9px,.75vw,11px);min-height:16px}"
+            // Prediction form (compact, inline)
+            + ".bracket-form{display:flex;align-items:center;gap:4px;justify-content:center}"
+            + ".bracket-form-inputs{display:flex;align-items:center;gap:2px}"
+            + ".bracket-input{width:clamp(26px,2.5vw,32px);height:clamp(26px,2.5vw,32px);text-align:center;font-size:clamp(12px,1.1vw,14px);font-weight:700;padding:1px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);-moz-appearance:textfield;appearance:textfield}"
+            + ".bracket-input::-webkit-inner-spin-button,.bracket-input::-webkit-outer-spin-button{display:none}"
+            + ".bracket-input:focus{border-color:var(--pri);box-shadow:0 0 0 2px var(--pri-light)}"
+            + ".bracket-btn{width:clamp(22px,2vw,26px);height:clamp(22px,2vw,26px);border-radius:50%;background:var(--gradient);color:#fff;font-size:clamp(10px,.9vw,12px);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;min-height:auto;box-shadow:none;flex-shrink:0}"
+            + ".bracket-btn:hover{transform:scale(1.1);box-shadow:none}"
+            // Champion column
+            + ".bracket-champion{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(6px,.8vw,12px);padding:clamp(8px,1vw,16px);text-align:center;border-left:1px solid var(--border)}"
+            + ".bracket-champion .champion-icon{font-size:clamp(28px,3vw,40px)}"
+            + ".bracket-champion .champion-label{font-size:clamp(10px,.9vw,12px);font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:.08em}"
+            + ".bracket-champion .champion-team{font-size:clamp(13px,1.2vw,16px);font-weight:700;color:var(--text);display:flex;flex-direction:column;align-items:center;gap:4px}"
+            // Third place match (below bracket)
+            + ".bracket-third-place{margin-top:clamp(16px,2vw,28px);padding-top:clamp(16px,2vw,24px);border-top:1px solid var(--border)}"
+            + ".third-grid{display:flex;justify-content:center;max-width:300px;margin:0 auto}"
+            + ".third-grid .bracket-match-card{max-width:280px}"
+            // Connector variants: for connectors spanning 4 rows, 8 rows, etc.
+            // The ::before (vertical line) and ::after (right horizontal) scales with the container
+            + ".bracket-cell .bracket-match-card.correct-exact{border-color:var(--green)!important;background:rgba(16,185,129,.06)!important}"
+            + ".bracket-cell .bracket-match-card.correct-exact::before{background:var(--green)!important;opacity:.8}"
+            + ".bracket-cell .bracket-match-card.correct-winner{border-color:var(--gold)!important;background:rgba(245,158,11,.06)!important}"
+            + ".bracket-cell .bracket-match-card.correct-winner::before{background:var(--gold)!important;opacity:.8}"
+            + ".bracket-cell .bracket-match-card.wrong{border-color:var(--red)!important;background:rgba(239,68,68,.04)!important}"
+            + ".bracket-cell .bracket-match-card.wrong::before{background:var(--red)!important;opacity:.8}"
 
             // ═══════════════════════════════════════
             //  SCROLLBAR — dark premium
