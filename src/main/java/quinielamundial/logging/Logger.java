@@ -26,7 +26,7 @@ public class Logger {
     }
 
     public void info(String format, Object... args) {
-        write("INFO", String.format(format, args));
+        write("INFO", String.format(format.replace("{}", "%s"), args));
     }
 
     public void error(String msg) {
@@ -34,7 +34,7 @@ public class Logger {
     }
 
     public void error(String format, Object... args) {
-        write("ERROR", String.format(format, args));
+        write("ERROR", String.format(format.replace("{}", "%s"), args));
     }
 
     private void write(String level, String msg) {
