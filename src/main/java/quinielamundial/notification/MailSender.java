@@ -18,7 +18,7 @@ import java.util.Properties;
  * Configured via environment variables: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.
  * Defaults to Gmail SMTP on port 587 with STARTTLS.
  */
-public class MailSender {
+public class MailSender implements Sender {
 
     private static final Logger LOG = new Logger("MailSender");
 

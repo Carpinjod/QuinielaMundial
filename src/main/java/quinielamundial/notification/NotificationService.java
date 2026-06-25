@@ -26,19 +26,19 @@ public class NotificationService {
     private static final long NOTIFY_WINDOW_SECONDS = 120;   // +/- 2 minutes window
 
     private final List<Group> groups;
-    private final MailSender mailSender;
+    private final Sender sender;
     private final String publicUrl;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final Set<String> sentNotifications = ConcurrentHashMap.newKeySet();
 
-    public NotificationService(List<Group> groups, MailSender mailSender, String publicUrl) {
+    public NotificationService(List<Group> groups, Sender sender, String publicUrl) {
         this.groups = groups;
-        this.mailSender = mailSender;
+        this.sender = sender;
         this.publicUrl = publicUrl;
     }
 
     public void start() {
-        if (!mailSender.isConfigured()) {
+        if (!sender.isConfigured()) {
             LOG.info("SMTP not configured — notification service disabled");
             return;
         }
@@ -84,7 +84,7 @@ public class NotificationService {
                             + publicUrl + "/groups/" + group.code() + "?token=" + member.token() + "\n\n"
                             + "Saludos,\nQuiniela Mundial 2026";
 
-                        mailSender.send(email, subject, body);
+                        sender.send(email, subject, body);
                         LOG.info("Reminder sent to {} for {} vs {} (group {})",
                             member.name(), match.home(), match.away(), group.code());
                     }

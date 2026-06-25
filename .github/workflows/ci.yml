@@ -76,6 +76,9 @@ jobs:
                 -e \"SMTP_USER=${{ secrets.SMTP_USER }}\" \
                 -e \"SMTP_PASS=${{ secrets.SMTP_PASS }}\" \
                 -e \"SMTP_FROM=${{ secrets.SMTP_FROM }}\" \
+                -e \"GMAIL_CLIENT_ID=${{ secrets.GMAIL_CLIENT_ID }}\" \
+                -e \"GMAIL_CLIENT_SECRET=${{ secrets.GMAIL_CLIENT_SECRET }}\" \
+                -e \"GMAIL_REFRESH_TOKEN=${{ secrets.GMAIL_REFRESH_TOKEN }}\" \
                 -e \"PUBLIC_URL=${{ secrets.PUBLIC_URL }}\" \
                 --restart unless-stopped \
                 ghcr.io/${{ steps.vars.outputs.REPO_LOWER }}:latest

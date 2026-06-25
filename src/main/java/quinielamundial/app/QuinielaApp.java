@@ -13,7 +13,6 @@ import quinielamundial.web.ScoreStream;
 import quinielamundial.service.BracketResolver;
 import quinielamundial.service.MatchUpdateService;
 import quinielamundial.service.QuinielaService;
-import quinielamundial.notification.MailSender;
 import quinielamundial.notification.NotificationService;
 import quinielamundial.web.FormData;
 import quinielamundial.web.HtmlRenderer;
@@ -65,7 +64,10 @@ public class QuinielaApp {
             updatedGroups -> broadcastLiveScores(updatedGroups)
         );
         updater.start();
-        var mailSender = new MailSender();
+        var googleMailSender = new quinielamundial.notification.GoogleMailSender();
+        var mailSender = googleMailSender.isConfigured()
+            ? googleMailSender
+            : new quinielamundial.notification.MailSender();
         var publicUrl = System.getenv().getOrDefault("PUBLIC_URL", "http://localhost:" + port);
         var notifier = new NotificationService(service.groups().stream().toList(), mailSender, publicUrl);
         notifier.start();
