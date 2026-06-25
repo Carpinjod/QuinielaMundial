@@ -1,177 +1,194 @@
-# ⚽ Quiniela Mundial 2026
+# Quiniela Mundial 2026
 
-Aplicación web para crear **quinielas privadas** del Mundial de Fútbol 2026. Grupos con amigos, pronósticos, puntuaciones en tiempo real y soporte completo para el nuevo formato de **48 selecciones** y **104 partidos**.
+Web application for running **private prediction pools** for the 2026 FIFA World Cup. Supports the new 48-team format with 104 matches across group stage and knockout rounds.
 
 ---
 
-## ✨ Funcionalidades
+## Features
 
-- **Grupos privados** — Crea un grupo, comparte el código de invitación. Cada miembro tiene un token único.
-- **Pronósticos** — Acierta el resultado exacto de cada partido. Modificable hasta que el partido empieza.
-- **104 partidos** — Los 72 de la fase de grupos (12 grupos de 4) + los 32 de eliminatorias (R32 → Final).
-- **Partido Estrella ⭐** — Cada jornada puedes marcar un partido para que puntúe el doble.
-- **Apuesta al Campeón 🏆** — Elige tu candidato antes de que empiece el torneo. 10 puntos extra si aciertas.
-- **Clasificación en tiempo real** — Leaderboard con puntuaciones, aciertos exactos y medallas.
-- **Pronósticos ocultos** — Nadie ve lo que otros pronosticaron hasta que el partido empieza. Sin copias.
-- **Eliminatorias automáticas** — Cuando terminan los 72 partidos de grupos, el cuadro se rellena solo con los cruces reales.
-- **Actualización automática de resultados** — Cada 5 minutos consulta [OpenLigaDB](https://www.openligadb.de/) para traer resultados reales.
-- **Modo oscuro** — Diseño tipo SaaS moderno (Inspiración: Linear, Vercel, Railway).
-- **Responsive** — Drawer lateral con clasificación en móvil, sidebar fija en escritorio.
+- **Private Groups** — Create a group and share the invite code. Each member receives a unique access token.
+- **Match Predictions** — Predict the exact score of every match. Editable until kickoff.
+- **Full Tournament Coverage** — All 72 group-stage matches (12 groups of 4) plus 32 knockout matches (Round of 32 to Final).
+- **Star Match** — Each round, select one match to score double points.
+- **Champion Bet** — Pick your tournament winner before the opening match. Worth 10 bonus points.
+- **Live Leaderboard** — Real-time standings with scores, exact-hit counts, and medals.
+- **Hidden Predictions** — Members cannot see each other's predictions until the match starts. Prevents copying.
+- **Automatic Bracket Resolution** — When the group stage ends, the knockout bracket populates automatically based on real-world results.
+- **Live Score Updates** — Polls [OpenLigaDB](https://www.openligadb.de/) every 15 seconds for real-time scores during matches.
+- **Server-Sent Events** — Score updates push to the browser via SSE; no polling on the client side.
+- **Dark Mode** — Modern SaaS-inspired design.
+- **Responsive Layout** — Collapsible drawer with standings on mobile, fixed sidebar on desktop.
 
-## 📊 Sistema de puntuación
+## Scoring System
 
-| Resultado | Puntos |
-|-----------|--------|
-| Resultado exacto (marcador acertado) | **+3** 🎯 |
-| Ganador o empate acertado | **+1** ✅ |
-| Partido Estrella (por jornada) | **×2** ⭐ |
-| Campeón del mundo acertado | **+10** 🏆 |
-| Fallo | **+0** ❌ |
+| Result | Points |
+|--------|--------|
+| Exact score match | +3 |
+| Correct winner or draw | +1 |
+| Star Match (one per round) | x2 |
+| Correct champion prediction | +10 |
+| Incorrect | +0 |
 
-## 🏗️ Arquitectura
+## Architecture
 
 ```
-                           ┌─────────────┐
-                           │  OpenLigaDB  │
-                           │   (API ext)  │
-                           └──────┬──────┘
-                                  │ poll cada 5min
-                                  ▼
-┌─────┐     ┌──────────────┐ ┌────────────┐ ┌───────────┐
-│ User │────▶│  HttpServer  │─▶│ QuinielaApp│─▶│ StateStore│──▶ disco
-│(brwr)│     │  (puerto :8080)│ │  (router)  │ │ (serial)  │   data/
-└─────┘     └──────────────┘ └─────┬──────┘ └───────────┘
-                                   │
-                  ┌────────────────┼────────────────┐
-                  ▼                ▼                ▼
-           ┌──────────┐    ┌────────────┐   ┌──────────────┐
-           │ Quiniela │    │  Bracket   │   │ MatchUpdate  │
-           │ Service  │    │  Resolver  │   │ Service      │
-           └──────────┘    └────────────┘   └──────────────┘
-                  │
-          ┌───────┴───────┐
-          ▼               ▼
-   ┌─────────┐    ┌────────────┐
-   │  Group   │    │  HtmlRender│
-   │ +Members │    │  (SSR)     │
-   │ +Matches │    └────────────┘
-   │ +Scores  │
-   └─────────┘
+                            +-------------------+
+                            |    OpenLigaDB     |
+                            |   (external API)  |
+                            +--------+----------+
+                                     | poll every 15s
+                                     v
++-------+     +---------------+ +-----------+ +--------------+
+| User  +---->+  HttpServer   +>+ QuinielaApp|+>+ StateStore   +> disk
+|(browser)   |  (port :8080) | | (router)  | | (serialize)  |  data/
++-------+     +---------------+ +-----+-----+ +--------------+
+                                      |
+                  +-------------------+-------------------+
+                  v                   v                   v
+           +-----------+      +------------+      +---------------+
+           | Quiniela  |      |  Bracket   |      | MatchUpdate   |
+           | Service   |      |  Resolver  |      | Service       |
+           +-----------+      +------------+      +---------------+
+                  |
+          +-------+--------+
+          v                v
+   +----------+    +-------------+
+   |  Group   |    | HtmlRenderer|
+   | +Members |    | (SSR)       |
+   | +Matches |    +-------------+
+   | +Scores  |
+   +----------+
 ```
 
-### Capas
+### Layers
 
-| Capa | Paquete | Responsabilidad |
-|------|---------|----------------|
-| **Domain** | `quinielamundial.domain` | Entidades puras: `Group`, `Member`, `Match`, `Prediction`, `ScoreBreakdown`. Sin dependencias externas. |
-| **Service** | `quinielamundial.service` | Lógica de negocio: `QuinielaService` (orquestación), `BracketResolver` (cruces KO), `MatchUpdateService` (auto-actualización), `WorldCupSchedule` (calendario completo), `AuthService` (login/register). |
-| **Persistence** | `quinielamundial.persistence` | `StateStore` — serialización Java a disco. |
-| **Web** | `quinielamundial.web` | `HttpServer` embebido (sin frameworks), `HtmlRenderer` (SSR con HTML + CSS inline ~500 líneas), `FormData` (parseo de formularios). |
-| **App** | `quinielamundial.app` | Punto de entrada (`Main`) y controlador HTTP (`QuinielaApp`). |
+| Layer | Package | Responsibility |
+|-------|---------|----------------|
+| **Domain** | `quinielamundial.domain` | Pure entities: `Group`, `Member`, `Match`, `Prediction`, `ScoreBreakdown`. No external dependencies. |
+| **Service** | `quinielamundial.service` | Business logic: `QuinielaService` (orchestration), `BracketResolver` (knockout pairings), `MatchUpdateService` (live score polling), `WorldCupSchedule` (full fixture list), `AuthService` (login/register). |
+| **Persistence** | `quinielamundial.persistence` | `StateStore` — Java serialization to disk. |
+| **Web** | `quinielamundial.web` | Embedded `HttpServer` (no framework), `HtmlRenderer` (SSR with inline CSS), `ScoreStream` (SSE hub), `FormData` (form parsing). |
+| **App** | `quinielamundial.app` | Entry point (`Main`) and HTTP controller (`QuinielaApp`). |
 
-## 🧱 Tech Stack
+## Tech Stack
 
-| Componente | Tecnología |
-|------------|-----------|
-| Lenguaje | **Java 17** |
-| Servidor HTTP | `com.sun.net.httpserver.HttpServer` (JDK estándar, sin Spring) |
-| API externa | [OpenLigaDB](https://www.openligadb.de/) — resultados en tiempo real |
+| Component | Technology |
+|-----------|-----------|
+| Language | **Java 17** |
+| HTTP Server | `com.sun.net.httpserver.HttpServer` (JDK standard library, no Spring) |
+| External API | [OpenLigaDB](https://www.openligadb.de/) — real-time match results |
 | JSON | **Gson 2.11.0** |
 | Tests | **JUnit 5.10.2** |
-| Frontend | HTML generado server-side + CSS Grid/Flexbox + ~500 líneas de CSS |
-| Tipografía | Inter (texto) + JetBrains Mono (código) |
+| Frontend | Server-side rendered HTML + CSS Grid/Flexbox (~500 lines of CSS) |
+| Typography | Inter (text) + JetBrains Mono (code) |
 | Build | **Maven** |
-| Persistencia | Serialización Java `data/quiniela-state.txt` |
-| Despliegue | VPS Ubuntu + systemd + Caddy (HTTPS automático) |
+| Persistence | Java serialization to `data/quiniela-state.txt` |
+| CI/CD | GitHub Actions (build, test, deploy) |
+| Deployment | Docker container on VPS with systemd + Caddy (automatic HTTPS via Let's Encrypt) |
 
-## 🚀 Cómo ejecutar localmente
+## Quick Start
 
 ```bash
-# Requisito: Java 17+
+# Requirements: Java 17+
 java -version
 
-# Compilar
+# Build
 mvn clean package
 
-# Ejecutar
+# Run
 java -jar target/quinielamundial-1.0.0-SNAPSHOT.jar
 
-# Abrir en el navegador
+# Open in browser
 open http://localhost:8080
 ```
 
-Variables de entorno opcionales:
+Optional environment variables:
 
-| Variable | Valor por defecto | Descripción |
-|----------|------------------|-------------|
-| `PORT` | `8080` | Puerto del servidor HTTP |
-| `DATA_DIR` | `data` | Directorio para persistencia |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8080` | HTTP server port |
+| `DATA_DIR` | `data` | Persistence directory |
 
-## 🐳 Despliegue en VPS
+## Deployment
 
-Incluye `deploy/setup.sh` para desplegar en un VPS Ubuntu 24.04 con:
+The project includes a CI/CD pipeline via GitHub Actions. On every push to `main`:
 
-- **Java 17** runtime
-- **Caddy** como reverse proxy con HTTPS automático (Let's Encrypt)
-- **systemd** service con autoreinicio
+1. Build with Maven
+2. Run all tests
+3. Build Docker image
+4. Push to GitHub Container Registry
+5. Deploy to the VPS via SSH
 
-Pasos rápidos:
+### VPS Requirements
+
+- Ubuntu 24.04+
+- Java 17 runtime
+- Docker (optional, for containerized deployment)
+- Caddy for reverse proxy and automatic HTTPS
+
+### Manual Deployment
 
 ```bash
-# 1. Compilar
+# Build
 mvn package
 
-# 2. Subir al servidor
+# Upload to server
 scp target/quinielamundial-1.0.0-SNAPSHOT.jar root@<IP>:/opt/quiniela/
 
-# 3. Ejecutar el setup en el servidor
+# Start service on server
 ssh root@<IP>
-bash /opt/quiniela/setup.sh
-
-# 4. Iniciar servicios
-systemctl enable --now quiniela
-systemctl restart caddy
+systemctl restart quiniela
 ```
 
-## 📁 Estructura del proyecto
+## Project Structure
 
 ```
 src/
-├── main/java/quinielamundial/
-│   ├── app/            # Punto de entrada y controlador HTTP
-│   │   ├── Main.java
-│   │   └── QuinielaApp.java
-│   ├── domain/         # Entidades del dominio
-│   │   ├── Group.java
-│   │   ├── Match.java
-│   │   ├── Member.java
-│   │   ├── Outcome.java
-│   │   ├── Prediction.java
-│   │   ├── RankingEntry.java
-│   │   └── ScoreBreakdown.java
-│   ├── persistence/    # Persistencia a disco
-│   │   └── StateStore.java
-│   ├── service/        # Lógica de negocio
-│   │   ├── AuthService.java
-│   │   ├── BracketResolver.java
-│   │   ├── MatchUpdateService.java
-│   │   ├── QuinielaService.java
-│   │   └── WorldCupSchedule.java
-│   └── web/            # Renderizado HTML server-side
-│       ├── FormData.java
-│       └── HtmlRenderer.java
-└── test/java/quinielamundial/
-    └── QuinielaDomainTest.java
++-- main/java/quinielamundial/
+|   +-- app/                # Entry point and HTTP controller
+|   |   +-- Main.java
+|   |   +-- QuinielaApp.java
+|   +-- domain/             # Domain entities
+|   |   +-- Group.java
+|   |   +-- Match.java
+|   |   +-- Member.java
+|   |   +-- Outcome.java
+|   |   +-- Prediction.java
+|   |   +-- RankingEntry.java
+|   |   +-- ScoreBreakdown.java
+|   +-- persistence/        # Disk persistence
+|   |   +-- StateStore.java
+|   +-- service/            # Business logic
+|   |   +-- AuthService.java
+|   |   +-- BracketResolver.java
+|   |   +-- MatchUpdateService.java
+|   |   +-- QuinielaService.java
+|   |   +-- WorldCupSchedule.java
+|   +-- web/                # Server-side HTML rendering
+|       +-- FormData.java
+|       +-- HtmlRenderer.java
+|       +-- ScoreStream.java
++-- test/java/quinielamundial/
+    +-- QuinielaCSSFrameworkTest.java
+    +-- QuinielaDataIntegrityTest.java
+    +-- QuinielaDomainTest.java
+    +-- QuinielaPageStructureTest.java
+    +-- QuinielaRenderingTest.java
 ```
 
-## 🧪 Tests
+## Testing
 
 ```bash
 mvn test
 ```
 
-9 tests unitarios sobre el core del dominio (puntuaciones, pronósticos, leaderboard).
+The test suite includes:
+- **Domain tests**: scoring logic, predictions, leaderboard resolution
+- **Data integrity tests**: fixture consistency across all 104 matches
+- **Page structure tests**: layout and responsive behavior
+- **CSS framework tests**: visual coverage and rendering
+- **Rendering tests**: HTML output correctness
 
-## 📄 Licencia
+## License
 
 MIT
