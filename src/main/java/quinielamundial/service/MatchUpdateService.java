@@ -177,10 +177,17 @@ public class MatchUpdateService {
                     }
                 }
 
-                // 2. Live / in-progress result: resultTypeID=1 ("Halbzeit") as current score
+                // 2. Live / in-progress result:
+                //    First try resultTypeID=2 (current score — OpenLigaDB reports "Endergebnis"
+                //    from minute 0, updating it with every goal). Fall back to resultTypeID=1
+                //    ("Halbzeit", only available after ~45').
                 if (!matchIsFinished) {
-                    Integer liveHome = extractResult(obj, 1, "pointsTeam1");
-                    Integer liveAway = extractResult(obj, 1, "pointsTeam2");
+                    Integer liveHome = extractResult(obj, 2, "pointsTeam1");
+                    Integer liveAway = extractResult(obj, 2, "pointsTeam2");
+                    if (liveHome == null || liveAway == null) {
+                        liveHome = extractResult(obj, 1, "pointsTeam1");
+                        liveAway = extractResult(obj, 1, "pointsTeam2");
+                    }
                     if (liveHome != null && liveAway != null) {
                         var apiMatch = new ApiMatch();
                         apiMatch.dateTimeUtc = dateTimeUtc;
