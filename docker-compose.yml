@@ -9,4 +9,11 @@ services:
     environment:
       - DATA_DIR=/app/data
       - PORT=8080
+      # ── Email notifications (opcional) ──
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=
+      - SMTP_PASS=
+      - SMTP_FROM=
+      - PUBLIC_URL=http://localhost:8080
     restart: unless-stopped

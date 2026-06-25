@@ -80,6 +80,13 @@ Group=$SERVICE_USER
 WorkingDirectory=$APP_DIR
 Environment="DATA_DIR=$DATA_DIR"
 Environment="PORT=8080"
+# ── Email notifications (opcional) ──
+# Environment="SMTP_HOST=smtp.gmail.com"
+# Environment="SMTP_PORT=587"
+# Environment="SMTP_USER="
+# Environment="SMTP_PASS="
+# Environment="SMTP_FROM="
+# Environment="PUBLIC_URL=https://$CADDY_DOMAIN"
 ExecStart=/usr/bin/java -jar $APP_DIR/$JAR_NAME
 Restart=always
 RestartSec=10

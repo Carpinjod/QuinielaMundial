@@ -65,13 +65,19 @@ jobs:
              echo '→ Removing old container'
              docker stop quiniela-mundial 2>/dev/null || true
              docker rm quiniela-mundial 2>/dev/null || true
-             echo '→ Starting new container'
-             docker run -d --name quiniela-mundial \
-               -p 8080:8080 \
-               -v /opt/quiniela/data:/app/data \
-               -e DATA_DIR=/app/data \
-               -e PORT=8080 \
-               --restart unless-stopped \
-               ghcr.io/${{ steps.vars.outputs.REPO_LOWER }}:latest
+              echo '→ Starting new container'
+              docker run -d --name quiniela-mundial \
+                -p 8080:8080 \
+                -v /opt/quiniela/data:/app/data \
+                -e DATA_DIR=/app/data \
+                -e PORT=8080 \
+                -e SMTP_HOST=${{ secrets.SMTP_HOST }} \
+                -e SMTP_PORT=${{ secrets.SMTP_PORT }} \
+                -e SMTP_USER=${{ secrets.SMTP_USER }} \
+                -e SMTP_PASS=${{ secrets.SMTP_PASS }} \
+                -e SMTP_FROM=${{ secrets.SMTP_FROM }} \
+                -e PUBLIC_URL=${{ secrets.PUBLIC_URL }} \
+                --restart unless-stopped \
+                ghcr.io/${{ steps.vars.outputs.REPO_LOWER }}:latest
              echo '→ Cleaning up old images'
              docker image prune -f"
