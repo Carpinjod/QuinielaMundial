@@ -657,14 +657,14 @@ public class HtmlRenderer {
         var totalRows = 16;
         var grid = new StringBuilder();
 
-        // Round labels header — short labels for all viewports
+        // Round labels header
         grid.append("<div class='bracket-labels'>")
-            .append("<div class='bracket-label'>R32</div>")
-            .append("<div class='bracket-label'>R16</div>")
-            .append("<div class='bracket-label'>QF</div>")
-            .append("<div class='bracket-label'>SF</div>")
-            .append("<div class='bracket-label'>FIN</div>")
-            .append("<div class='bracket-label champion-label'>🏆</div>")
+            .append("<div class='bracket-label'>Dieciseisavos</div>")
+            .append("<div class='bracket-label'>Octavos</div>")
+            .append("<div class='bracket-label'>Cuartos</div>")
+            .append("<div class='bracket-label'>Semifinales</div>")
+            .append("<div class='bracket-label'>Final</div>")
+            .append("<div class='bracket-label champion-label'>🏆 Campeón</div>")
             .append("</div>");
 
         grid.append("<div class='bracket-grid'>");
@@ -685,16 +685,6 @@ public class HtmlRenderer {
             var rowSpan = totalRows / count;
             var col = colByRound.get(round);
 
-            // Round wrapper: used for scroll-snap on mobile, display:contents on desktop
-            // Spans its column(s) from row 1 to 17 (full bracket height)
-            var lastNextCol = ri < roundOrder.size() - 1
-                ? col + 2  // include connector column
-                : col + 1; // just the match column for FIN
-            grid.append("<div class='round-col' style='grid-column:")
-                .append(col).append("/").append(lastNextCol)
-                .append(";grid-row:1/17'>");
-
-            // Match cells for this round
             for (int mi = 0; mi < count; mi++) {
                 var match = byId.get(matchIds.get(mi));
                 if (match == null) continue;
@@ -719,8 +709,6 @@ public class HtmlRenderer {
                         .append("</div>");
                 }
             }
-
-            grid.append("</div>"); // .round-col
         }
 
         // Champion label cell (far right)
@@ -1875,8 +1863,6 @@ public class HtmlRenderer {
             + ".conn-lines .l-top{position:absolute;left:0;right:50%;top:25%;border-top:2px solid var(--border)}"
             // Bottom horizontal prong coming FROM left feeder match TO center vertical
             + ".conn-lines .l-bot{position:absolute;left:0;right:50%;top:75%;border-top:2px solid var(--border)}"
-            // Round wrapper: invisible on desktop (display:contents), snap panel on mobile
-            + ".round-col{display:contents}"
             // Match card compact
             + ".bracket-match-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:clamp(6px,.8vw,10px) clamp(8px,1vw,12px);width:100%;display:flex;flex-direction:column;gap:clamp(2px,.3vw,5px);transition:border-color .2s ease,box-shadow .2s ease;position:relative;overflow:hidden;min-height:60px}"
             + ".bracket-match-card::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--gradient);border-radius:3px 0 0 3px;opacity:.4}"
@@ -2018,51 +2004,6 @@ public class HtmlRenderer {
             + ".btn-top.visible{opacity:1;pointer-events:auto;transform:translateY(0)}"
             + ".btn-top:hover{background:var(--surface-hover);color:var(--text);border-color:var(--text-dim);transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,.4)}"
             + ".btn-top:active{transform:scale(.95)}"
-
-            // ═══════════════════════════════════════
-            //  MOBILE BRACKET — horizontal snap panels
-            // ═══════════════════════════════════════
-            + "@media(max-width:767px){"
-            // Snap container
-            + ".bracket-wrapper{scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}"
-            // Grid becomes flex container for snap panels
-            + ".bracket-grid{display:flex!important;overflow:visible!important;min-width:0!important;gap:0}"
-            // Reset grid-specific rules
-            + ".bracket-grid .round-col{grid-column:auto!important;grid-row:auto!important}"
-            // Each round is a snap panel
-            + ".round-col{display:flex!important;flex-direction:column;gap:3px;flex:0 0 85vw;scroll-snap-align:start;padding:4px 6px;overflow-y:auto}"
-            // Hide connectors and champion on mobile
-            + ".bracket-connector,.bracket-champion{display:none!important}"
-            // Labels match mobile width
-            + ".bracket-labels{min-width:0}"
-            + ".bracket-label{font-size:clamp(9px,2.5vw,11px);padding:2px 4px;white-space:nowrap}"
-            + ".bracket-label.champion-label{display:none}"
-            // Cards — ultra compact
-            + ".bracket-match-card{padding:3px 5px;min-height:44px;border-radius:6px;gap:2px}"
-            + ".bracket-match-card::before{width:2px}"
-            // Hide meta (kickoff time + round badge) on mobile
-            + ".bracket-meta{display:none}"
-            // Hide team names, show only flags + score
-            + ".bracket-team .team-name{display:none!important}"
-            + ".bracket-team .flag{font-size:clamp(16px,4.5vw,20px)}"
-            + ".bracket-team{gap:2px}"
-            + ".bracket-teams{gap:2px}"
-            // Score compact
-            + ".bracket-score{font-size:clamp(12px,3.5vw,15px)}"
-            + ".bracket-idle{font-size:clamp(10px,3vw,13px)}"
-            // Footer hidden — result badges not needed at this size
-            + ".bracket-footer{display:none}"
-            // Prediction form compact (for matches needing input)
-            + ".bracket-form{gap:2px}"
-            + ".bracket-form-inputs{gap:1px}"
-            + ".bracket-input{width:clamp(22px,6vw,28px);height:clamp(22px,6vw,28px);font-size:clamp(11px,3vw,13px)}"
-            + ".bracket-btn{width:clamp(18px,5vw,22px);height:clamp(18px,5vw,22px);font-size:clamp(9px,2.5vw,11px)}"
-            // Cells minimal spacing
-            + ".bracket-cell{padding:1px}"
-            // Third place match compact
-            + ".bracket-third-place{margin-top:12px;padding-top:12px}"
-            + ".third-grid{max-width:100%}"
-            + ".third-grid .bracket-match-card{max-width:100%}}"
 
             + "</style>"
             + "</head><body>"
