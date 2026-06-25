@@ -477,11 +477,13 @@ class QuinielaPageStructureTest {
     @Test
     void settingsPageHasRequiredStructure() {
         var group = service.createGroup("Test", "Ana");
-        var html = renderer.settingsPage("Ana", List.of(group), null, null);
+        var html = renderer.settingsPage("Ana", List.of(group), null, null, null);
         assertAll("Settings page",
             () -> assertTrue(html.contains("Ajustes"), "Settings title"),
             () -> assertTrue(html.contains("Cambiar contraseña"), "Password change section"),
             () -> assertTrue(html.contains("action='/settings/password'"), "Password form action"),
+            () -> assertTrue(html.contains("Notificaciones por email"), "Email notification section"),
+            () -> assertTrue(html.contains("action='/settings/email'"), "Email form action"),
             () -> assertTrue(html.contains("Mis estadísticas"), "Stats section"),
             () -> assertTrue(html.contains("Cerrar sesión"), "Logout button")
         );

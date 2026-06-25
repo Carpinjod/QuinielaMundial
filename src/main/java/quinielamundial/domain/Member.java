@@ -13,6 +13,7 @@ public class Member implements Serializable {
     private final Map<Integer, Integer> starByJornada = new HashMap<>();
     private String championBet;
     private String token;
+    private String email; // nullable — for email notifications
 
     public Member(String name) { this.name = name; }
     public String name() { return name; }
@@ -22,4 +23,6 @@ public class Member implements Serializable {
     public void championBet(String championBet) { this.championBet = championBet; }
     public String token() { return token; }
     public void generateToken() { this.token = UUID.randomUUID().toString().replace("-", "").substring(0, 16); }
+    public String email() { return email; }
+    public void email(String email) { this.email = email; }
 }

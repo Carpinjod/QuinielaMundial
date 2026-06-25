@@ -136,7 +136,7 @@ public class HtmlRenderer {
             + "</div>");
     }
 
-    public String settingsPage(String username, Collection<Group> userGroups, String error, String success) {
+    public String settingsPage(String username, Collection<Group> userGroups, String email, String error, String success) {
         var groupStats = userGroups.stream().map(g -> {
             var member = g.members().values().stream().filter(m -> m.name().equals(username)).findFirst();
             if (member.isEmpty()) return "";
@@ -213,6 +213,13 @@ public class HtmlRenderer {
             + "<input name='confirm' type='password' placeholder='Repetir nueva contraseña' required autocomplete='new-password'>"
             + "<button type='submit'>Cambiar contraseña</button>"
             + "</form></div>"
+            + "<div class='card'><h2>Notificaciones por email</h2>"
+            + "<form method='post' action='/settings/email' class='auth-form' style='margin-top:12px'>"
+            + "<input name='email' type='email' placeholder='tu@email.com' value='" + (email == null ? "" : escape(email)) + "'>"
+            + "<button type='submit'>Guardar email</button>"
+            + "</form>"
+            + "<p class='muted' style='margin-top:8px;font-size:13px'>Recibirás un recordatorio 1 hora antes de cada partido que no hayas pronosticado.</p>"
+            + "</div>"
             + "<div class='card'><h2>📊 Mis estadísticas</h2>"
             + "<div class='table-wrap'><table><thead><tr>"
             + "<th>Grupo</th><th>Pts</th><th>#</th><th>🎯</th><th>🎲</th><th>%</th><th>🔥 Rachas</th><th>📊 vs Grupo</th>"

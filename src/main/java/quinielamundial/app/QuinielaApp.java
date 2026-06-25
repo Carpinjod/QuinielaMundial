@@ -13,6 +13,8 @@ import quinielamundial.web.ScoreStream;
 import quinielamundial.service.BracketResolver;
 import quinielamundial.service.MatchUpdateService;
 import quinielamundial.service.QuinielaService;
+import quinielamundial.notification.MailSender;
+import quinielamundial.notification.NotificationService;
 import quinielamundial.web.FormData;
 import quinielamundial.web.HtmlRenderer;
 
@@ -63,6 +65,10 @@ public class QuinielaApp {
             updatedGroups -> broadcastLiveScores(updatedGroups)
         );
         updater.start();
+        var mailSender = new MailSender();
+        var publicUrl = System.getenv().getOrDefault("PUBLIC_URL", "http://localhost:" + port);
+        var notifier = new NotificationService(service.groups().stream().toList(), mailSender, publicUrl);
+        notifier.start();
         var server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/", this::handle);
         server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(8));
@@ -160,7 +166,25 @@ public class QuinielaApp {
                 var loggedIn = resolveSession(exchange);
                 if (loggedIn == null) { redirect(exchange, "/login"); return; }
                 var success = FormData.param(exchange, "success");
-                render(exchange, renderer.settingsPage(loggedIn, userGroups(loggedIn), null, success.isBlank() ? null : success));
+                render(exchange, renderer.settingsPage(loggedIn, userGroups(loggedIn), userEmail(loggedIn), null, success.isBlank() ? null : success));
+                return;
+            }
+
+            if ("POST".equals(method) && "/settings/email".equals(path)) {
+                var loggedIn = resolveSession(exchange);
+                if (loggedIn == null) { redirect(exchange, "/login"); return; }
+                var form = FormData.read(exchange);
+                var email = form.value("email", "").trim();
+                // Update email on every member with this username across all groups
+                for (var g : service.groups()) {
+                    for (var m : g.members().values()) {
+                        if (m.name().equals(loggedIn)) {
+                            m.email(email.isBlank() ? null : email);
+                        }
+                    }
+                }
+                store.save(service.groups(), service.tournamentChampion());
+                redirect(exchange, "/settings?success=Email+guardado");
                 return;
             }
 
@@ -172,15 +196,15 @@ public class QuinielaApp {
                 var password = form.value("password", "");
                 var confirm = form.value("confirm", "");
                 if (password.length() < 8) {
-                    render(exchange, renderer.settingsPage(loggedIn, userGroups(loggedIn), "La nueva contraseña debe tener al menos 8 caracteres.", null));
+                    render(exchange, renderer.settingsPage(loggedIn, userGroups(loggedIn), userEmail(loggedIn), "La nueva contraseña debe tener al menos 8 caracteres.", null));
                     return;
                 }
                 if (!password.equals(confirm)) {
-                    render(exchange, renderer.settingsPage(loggedIn, userGroups(loggedIn), "Las contraseñas no coinciden.", null));
+                    render(exchange, renderer.settingsPage(loggedIn, userGroups(loggedIn), userEmail(loggedIn), "Las contraseñas no coinciden.", null));
                     return;
                 }
                 if (!auth.changePassword(loggedIn, current, password)) {
-                    render(exchange, renderer.settingsPage(loggedIn, userGroups(loggedIn), "La contraseña actual no es correcta.", null));
+                    render(exchange, renderer.settingsPage(loggedIn, userGroups(loggedIn), userEmail(loggedIn), "La contraseña actual no es correcta.", null));
                     return;
                 }
                 redirect(exchange, "/settings?success=Contrase%C3%B1a+cambiada+correctamente");
@@ -545,6 +569,17 @@ public class QuinielaApp {
         return service.groups().stream()
             .filter(g -> g.members().values().stream().anyMatch(m -> m.name().equals(username)))
             .collect(java.util.stream.Collectors.toList());
+    }
+
+    /** Get the email address of a user, or null if not set. */
+    private String userEmail(String username) {
+        if (username == null) return null;
+        for (var g : service.groups()) {
+            for (var m : g.members().values()) {
+                if (m.name().equals(username) && m.email() != null) return m.email();
+            }
+        }
+        return null;
     }
 
     /** Push live scores to SSE clients of the given groups. */
