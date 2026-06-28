@@ -72,6 +72,21 @@ Cuando terminen los **72 partidos** de la fase de grupos, se desbloquean las eli
 
 Los cruces se rellenan automáticamente según los resultados de la fase de grupos.
 
+### 📋 Método de clasificación
+
+En cada partido de eliminatorias puedes pronosticar **cómo se va a decidir** el pase a la siguiente ronda:
+
+| Opción | Significa |
+|--------|-----------|
+| **Tiempo regular (90')** | El partido se decide en los 90 minutos reglamentarios |
+| **Prórroga (120')** | El partido se va a la prórroga y ahí se decide |
+| **Penaltis** | El partido llega hasta los penaltis |
+
+**¿Cómo se determina el método real?**
+- Si el partido termina con goles diferentes → se considera **Tiempo regular** (salvo que el creador del grupo lo corrija)
+- Si el partido termina en empate → se considera **Penaltis** (los KO no pueden quedar en empate)
+- El creador del grupo puede corregir el método manualmente si fue a la prórroga
+
 ---
 
 ## Sistema de puntos
@@ -80,9 +95,12 @@ Los cruces se rellenan automáticamente según los resultados de la fase de grup
 |-----------|--------|
 | Resultado exacto (ej: metiste 3-2 y fue 3-2) | **3 puntos** 🎯 |
 | Acertar solo quién gana o que es empate | **1 punto** ✅ |
+| **Acertar el método de clasificación** (solo eliminatorias) | **+1 punto extra** 💪 |
 | Partido estrella | Todo **×2** ⭐ |
 | Acertar el campeón del mundo | **+10 puntos** 🏆 |
 | Fallar | 0 puntos |
+
+> Ejemplo: si aciertas el resultado exacto Y el método, son **4 puntos** (3+1). Si aciertas solo el ganador Y el método, son **2 puntos** (1+1). Si fallas el resultado pero aciertas el método, te llevas **1 punto** igual.
 
 ---
 

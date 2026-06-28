@@ -598,8 +598,22 @@ public class HtmlRenderer {
             if (prediction == null) return "<li><b>" + escape(other.name()) + "</b>: —</li>";
             if (!started && !Objects.equals(other.name(), viewerName))
                 return "<li><b>" + escape(other.name()) + "</b>: 🔒 oculto</li>";
-            return "<li><b>" + escape(other.name()) + "</b>: <span class='pred-score'>" + prediction.homeGoals() + "–" + prediction.awayGoals() + "</span>"
-                + (prediction.star() ? " ⭐" : "") + "</li>";
+            var scoreHtml = "<span class='pred-score'>" + prediction.homeGoals() + "–" + prediction.awayGoals() + "</span>"
+                + (prediction.star() ? " ⭐" : "");
+            var methodHtml = "";
+            if (match.knockout()) {
+                var predMethod = other.knockoutMethod(match.id());
+                if (predMethod != null) {
+                    var methodLabel = switch (predMethod) {
+                        case "REGULAR" -> "90'";
+                        case "EXTRA_TIME" -> "120'";
+                        case "PENALTIES" -> "PEN";
+                        default -> predMethod;
+                    };
+                    methodHtml = " <span class='pred-method'>" + methodLabel + "</span>";
+                }
+            }
+            return "<li><b>" + escape(other.name()) + "</b>: " + scoreHtml + methodHtml + "</li>";
         }).collect(Collectors.joining(""));
 
         var count = (int) group.members().values().stream().filter(m -> m.predictions().containsKey(match.id())).count();
@@ -860,15 +874,30 @@ public class HtmlRenderer {
         if (!teamsKnown) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (finished) {
-            scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span></div>";
+            var methodBadge = "";
+            if (match.actualMethod() != null) {
+                var methodLabel = match.actualMethod().equals("PENALTIES") ? "PEN" :
+                    match.actualMethod().equals("EXTRA_TIME") ? "120'" : "90'";
+                methodBadge = " <span class='method-badge method-" + match.actualMethod().toLowerCase() + "'>" + methodLabel + "</span>";
+            }
+            scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span>" + methodBadge + "</div>";
         } else if (started && match.hasLiveScore()) {
             scoreHtml = "<div class='match-score live'><span class='score-home'>" + match.liveHomeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.liveAwayGoals() + "</span></div>";
         } else if (member == null) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (started) {
+            var predMethodBadge = "";
+            if (memberPrediction != null) {
+                var predMethod = member.knockoutMethod(match.id());
+                if (predMethod != null) {
+                    var methodLabel = predMethod.equals("PENALTIES") ? "PEN" :
+                        predMethod.equals("EXTRA_TIME") ? "120'" : "90'";
+                    predMethodBadge = " <span class='method-badge method-" + predMethod.toLowerCase() + "'>" + methodLabel + "</span>";
+                }
+            }
             scoreHtml = memberPrediction == null
                 ? "<span class='idle-msg'>🔴</span>"
-                : "<span class='pred-display'><span class='score-home'>" + memberPrediction.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + memberPrediction.awayGoals() + "</span></span>";
+                : "<span class='pred-display'><span class='score-home'>" + memberPrediction.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + memberPrediction.awayGoals() + "</span>" + predMethodBadge + "</span>";
         }
         // Form mode: scoreHtml stays empty — form wraps the teams instead
 
@@ -894,7 +923,31 @@ public class HtmlRenderer {
         if (!teamsKnown) {
             statusHtml = "<div class='match-status locked'>🔒</div>";
         } else if (finished) {
-            statusHtml = "<div class='match-status'>" + predictionResultBadge(match, memberPrediction, false, group) + "</div>";
+            var badgeHtml = predictionResultBadge(match, memberPrediction, false, group);
+            // Method bonus indicator for KO matches
+            if (match.actualMethod() != null && memberPrediction != null) {
+                var memberMethod = member == null ? null : member.knockoutMethod(match.id());
+                if (memberMethod != null) {
+                    var methodHit = memberMethod.equals(match.actualMethod());
+                    var methodLabel = switch (match.actualMethod()) {
+                        case "REGULAR" -> "90'";
+                        case "EXTRA_TIME" -> "120'";
+                        case "PENALTIES" -> "PEN";
+                        default -> match.actualMethod();
+                    };
+                    badgeHtml += " <span class='method-result " + (methodHit ? "method-hit" : "method-miss") + "' title='" + (methodHit ? "Acertaste el método (" + methodLabel + ")" : "Fallaste el método (fue " + methodLabel + ")") + "'>" + (methodHit ? "✅" : "❌") + "M</span>";
+                } else {
+                    // Show actual method even if member didn't predict
+                    var methodLabel = switch (match.actualMethod()) {
+                        case "REGULAR" -> "90'";
+                        case "EXTRA_TIME" -> "120'";
+                        case "PENALTIES" -> "PEN";
+                        default -> match.actualMethod();
+                    };
+                    badgeHtml += " <span class='method-indicator'>" + methodLabel + "</span>";
+                }
+            }
+            statusHtml = "<div class='match-status'>" + badgeHtml + "</div>";
         } else if (started) {
             statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
         }
@@ -904,10 +957,19 @@ public class HtmlRenderer {
         if (isFormMode) {
             var confirmAttr = memberPrediction == null ? "" : " data-confirm=\"¿Actualizar tu pronóstico de " + homeFormVal + "–" + awayFormVal + " a otro resultado?\"";
             var btnLabel = memberPrediction == null ? "Pronosticar" : "Actualizar";
+            var predMethod = member == null ? null : member.knockoutMethod(match.id());
             matchTeamsHtml = "<form method='post' action='/groups/" + group.code() + "/prediction' class='score-form team-form'" + confirmAttr + ">"
                 + hiddenToken(member.token()) + "<input type='hidden' name='jornada' value='0'>"
                 + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
                 + "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>"
+                + "<div class='method-select'>"
+                + "<select name='method'>"
+                + "<option value=''>Método</option>"
+                + "<option value='REGULAR' " + ("REGULAR".equals(predMethod) ? "selected" : "") + ">Tiempo regular</option>"
+                + "<option value='EXTRA_TIME' " + ("EXTRA_TIME".equals(predMethod) ? "selected" : "") + ">Prórroga</option>"
+                + "<option value='PENALTIES' " + ("PENALTIES".equals(predMethod) ? "selected" : "") + ">Penaltis</option>"
+                + "</select>"
+                + "</div>"
                 + "<button type='submit' class='btn-predict'>" + btnLabel + "</button>"
                 + "</form>";
             matchActionsHtml = "<div class='match-actions'>" + statusHtml + "</div>";
@@ -958,6 +1020,7 @@ public class HtmlRenderer {
         var home = existing == null ? "" : String.valueOf(existing.homeGoals());
         var away = existing == null ? "" : String.valueOf(existing.awayGoals());
         var confirmAttr = existing == null ? "" : " data-confirm=\"¿Actualizar tu pronóstico de " + home + "–" + away + " a otro resultado?\"";
+        var predMethod = member == null ? null : member.knockoutMethod(match.id());
         return "<form method='post' action='/groups/" + group.code() + "/prediction' class='score-form'" + confirmAttr + ">"
             + "<input type='hidden' name='token' value='" + escape(member.token()) + "'>"
             + "<input type='hidden' name='jornada' value='0'>"
@@ -966,6 +1029,14 @@ public class HtmlRenderer {
             + "<input name='homeGoals' type='number' min='0' class='score-input' value='" + home + "' placeholder='0' required>"
             + "<span class='score-sep'>–</span>"
             + "<input name='awayGoals' type='number' min='0' class='score-input' value='" + away + "' placeholder='0' required>"
+            + "</div>"
+            + "<div class='method-select'>"
+            + "<select name='method'>"
+            + "<option value=''>Método</option>"
+            + "<option value='REGULAR' " + ("REGULAR".equals(predMethod) ? "selected" : "") + ">Tiempo regular</option>"
+            + "<option value='EXTRA_TIME' " + ("EXTRA_TIME".equals(predMethod) ? "selected" : "") + ">Prórroga</option>"
+            + "<option value='PENALTIES' " + ("PENALTIES".equals(predMethod) ? "selected" : "") + ">Penaltis</option>"
+            + "</select>"
             + "</div>"
             + "<button type='submit' class='btn-predict'>" + (existing == null ? "Pronosticar" : "Actualizar") + "</button>"
             + "</form>";
@@ -1258,6 +1329,8 @@ public class HtmlRenderer {
         }
         var pts = starMatch ? base * 2 : base;
         var starIcon = starMatch && base > 0 ? " ⭐" : "";
+        // Method bonus for KO matches (using viewer as null — bonus shown only for the member's own badge)
+        // The badge is only shown for the current member, so the calling code should pass the right member.
         return "<span class='result-dot dot-" + (base == 3 ? "exact" : base == 1 ? "winner" : "wrong") + "'>" + icon + " +" + pts + starIcon + vsGroup + "</span>";
     }
 
@@ -1604,6 +1677,22 @@ public class HtmlRenderer {
             + ".score-input-sm:focus{border-color:var(--pri);box-shadow:0 0 0 3px var(--pri-light)}"
             + ".btn-admin{font-size:clamp(10px,.9vw,12px);padding:clamp(4px,.5vw,6px) clamp(8px,1vw,14px);border-radius:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);font-weight:600;cursor:pointer;font-family:var(--font);min-height:clamp(32px,3vw,38px);transition:all .2s ease}"
             + ".btn-admin:hover{background:var(--surface-hover);color:var(--text);border-color:var(--text-dim)}"
+
+            // Method selector dropdown (KO prediction form)
+            + ".method-select{width:100%;display:flex;justify-content:center}"
+            + ".method-select select{font-size:clamp(10px,.9vw,12px);padding:clamp(4px,.5vw,6px) clamp(6px,.7vw,10px);border-radius:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text-sec);font-weight:600;font-family:var(--font);cursor:pointer;outline:none;transition:all .2s ease;min-height:clamp(28px,3vw,34px)}"
+            + ".method-select select:hover,.method-select select:focus{border-color:var(--pri);color:var(--text)}"
+            // Method badge on scores (90', 120', PEN)
+            + ".method-badge{display:inline-flex;font-size:clamp(8px,.7vw,10px);font-weight:700;padding:1px clamp(3px,.4vw,5px);border-radius:3px;vertical-align:super;line-height:1.3;margin-left:1px}"
+            + ".method-regular{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3)}"
+            + ".method-extra_time{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)}"
+            + ".method-penalties{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3)}"
+            // Method result indicator in status badge
+            + ".method-result{font-size:clamp(9px,.8vw,11px);font-weight:700;font-family:var(--font-mono);cursor:help;margin-left:3px}"
+            + ".method-hit{color:var(--green)}"
+            + ".method-miss{color:var(--red);opacity:.7}"
+            + ".method-indicator{font-size:clamp(8px,.7vw,10px);font-weight:600;padding:1px 3px;border-radius:3px;background:var(--surface2);color:var(--text-dim);margin-left:3px;border:1px solid var(--border)}"
+            + ".pred-method{font-size:clamp(9px,.8vw,11px);font-weight:600;color:var(--text-dim);background:var(--surface-alt);padding:1px 4px;border-radius:3px;font-family:var(--font-mono)}"
 
             // Live indicator pulse
             + "@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}"

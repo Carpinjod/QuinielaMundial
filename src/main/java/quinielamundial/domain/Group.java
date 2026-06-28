@@ -86,6 +86,10 @@ public class Group implements Serializable {
     }
 
     public void submitPrediction(String token, int matchId, int homeGoals, int awayGoals) {
+        submitPrediction(token, matchId, homeGoals, awayGoals, null);
+    }
+
+    public void submitPrediction(String token, int matchId, int homeGoals, int awayGoals, String method) {
         var member = requireByToken(token);
         var match = matchById(matchId);
         if (match.isStarted()) throw new IllegalStateException("El partido ya comenzó.");
@@ -93,6 +97,9 @@ public class Group implements Serializable {
             throw new IllegalStateException("No se puede pronosticar un partido sin equipos asignados.");
         var star = !match.knockout() && member.starByJornada().getOrDefault(match.jornada(), -1) == matchId;
         member.predictions().put(matchId, new Prediction(homeGoals, awayGoals, star));
+        if (match.knockout()) {
+            member.knockoutMethod(matchId, method);
+        }
         changed();
     }
 
@@ -179,8 +186,13 @@ public class Group implements Serializable {
             var prediction = member.predictions().get(match.id());
             if (prediction == null) continue;
             var points = scoreMatch(match, prediction);
-            if (points == 3) exactHits++;
-            else if (points == 1) outcomeHits++;
+            // Method bonus for KO matches
+            if (match.knockout() && match.actualMethod() != null) {
+                var predMethod = member.knockoutMethod(match.id());
+                if (predMethod != null && predMethod.equals(match.actualMethod())) points += 1;
+            }
+            if (points >= 3 && points <= 4) exactHits++;
+            else if (points >= 1 && points <= 2) outcomeHits++;
             // Star match only applies to group stage (not KO)
             if (!match.knockout() && member.starByJornada().getOrDefault(match.jornada(), -1) == match.id())
                 points *= 2;
@@ -224,8 +236,13 @@ public class Group implements Serializable {
             var prediction = member.predictions().get(match.id());
             if (prediction == null) continue;
             var points = scoreMatch(match, prediction);
-            if (points == 3) exactHits++;
-            else if (points == 1) outcomeHits++;
+            // Method bonus for KO matches
+            if (match.knockout() && match.actualMethod() != null) {
+                var predMethod = member.knockoutMethod(match.id());
+                if (predMethod != null && predMethod.equals(match.actualMethod())) points += 1;
+            }
+            if (points >= 3 && points <= 4) exactHits++;
+            else if (points >= 1 && points <= 2) outcomeHits++;
             if (!match.knockout() && member.starByJornada().getOrDefault(match.jornada(), -1) == match.id())
                 points *= 2;
             total += points;
@@ -295,7 +312,12 @@ public class Group implements Serializable {
                 var p = member.predictions().get(match.id());
                 if (p == null) continue;
                 var pts = scoreMatch(match, p);
-                if (pts == 3) exactHits++;
+                // Method bonus for KO matches
+                if (match.knockout() && match.actualMethod() != null) {
+                    var predMethod = member.knockoutMethod(match.id());
+                    if (predMethod != null && predMethod.equals(match.actualMethod())) pts += 1;
+                }
+                if (pts >= 3 && pts <= 4) exactHits++;
                 roundPoints += pts;
             }
             memberRoundStats.put(member.name(), new int[]{roundPoints, exactHits});
