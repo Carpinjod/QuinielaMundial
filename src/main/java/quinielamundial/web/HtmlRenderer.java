@@ -327,10 +327,15 @@ public class HtmlRenderer {
             + "</div>";
 
         // ── View toggle: Fase de grupos / Eliminatorias ──
+        // Auto-detect: si no se especificó jornada y la fase de grupos terminó,
+        // mostrar eliminatorias por defecto en lugar de la fase de grupos.
+        if (selectedJornada == -1 && group.groupStageFinished()) {
+            selectedJornada = 0;
+        }
         var isKnockoutView = selectedJornada == 0;
         var tokenQs = member != null ? "&token=" + member.token() : "";
         var viewToggle = "<div class='view-toggle'>"
-            + "<a href='/groups/" + escape(group.code()) + "' class='view-btn" + (isKnockoutView ? "" : " active") + "'>📋 Fase de grupos</a>"
+            + "<a href='/groups/" + escape(group.code()) + "?jornada=-2" + tokenQs + "' class='view-btn" + (isKnockoutView ? "" : " active") + "'>📋 Fase de grupos</a>"
             + "<a href='/groups/" + escape(group.code()) + "?jornada=0" + tokenQs + "' class='view-btn" + (isKnockoutView ? " active" : "") + "'>🏆 Eliminatorias</a>"
             + "</div>";
 
@@ -610,18 +615,32 @@ public class HtmlRenderer {
         var byRound = koMatches.stream()
             .collect(Collectors.groupingBy(Match::round, LinkedHashMap::new, Collectors.toList()));
 
-        // Determine in-progress round and which to open by default
+        // Determine which round to open by default:
+        // 1. If any round has in-progress matches → open that round (live badge)
+        // 2. Otherwise, open the "current tournament round" — the highest-numbered
+        //    round where ANY match has started (kicked off). This handles the case
+        //    where a round's matches have all finished but the next hasn't started.
+        // 3. If nothing has started → first upcoming round.
+        // 4. If everything is finished → last round.
         int inProgressRound = 0;
+        int currentTournamentRound = 0;
         int firstUpcoming = Integer.MAX_VALUE;
         int maxRound = 0;
+        boolean anyStarted = false;
         for (var match : koMatches) {
             if (match.round() > maxRound) maxRound = match.round();
             if (!match.finished() && match.isStarted()) inProgressRound = match.round();
+            if (match.isStarted()) {
+                anyStarted = true;
+                if (match.round() > currentTournamentRound) currentTournamentRound = match.round();
+            }
             if (!match.isStarted() && match.round() < firstUpcoming) firstUpcoming = match.round();
         }
         int defaultOpenRound;
         if (inProgressRound > 0) {
             defaultOpenRound = inProgressRound;
+        } else if (anyStarted) {
+            defaultOpenRound = currentTournamentRound;
         } else if (firstUpcoming < Integer.MAX_VALUE) {
             defaultOpenRound = firstUpcoming;
         } else {

@@ -48,6 +48,11 @@ public class BracketResolver {
         var koMatches = group.knockoutMatches();
         var bracketSources = WorldCupSchedule.bracketSources();
 
+        // Pre-compute 3rd-place assignments for R32 so the same team is NOT
+        // assigned to multiple matches (the old findFirst() approach was buggy
+        // when candidate-group lists overlapped).
+        var thirdAssignment = assignThirdPlacedMatches(standings, advancingThirds, bracketSources);
+
         for (var match : koMatches) {
             if (match.finished()) continue;
             // For R32, always re-populate from current standings (groups may have been
@@ -57,8 +62,8 @@ public class BracketResolver {
             var sources = bracketSources.get(match.id());
             if (sources == null) continue;
 
-            String home = resolve(sources[0], standings, advancingThirds, koMatches);
-            String away = resolve(sources[1], standings, advancingThirds, koMatches);
+            String home = resolve(sources[0], match.id(), standings, advancingThirds, koMatches, thirdAssignment);
+            String away = resolve(sources[1], match.id(), standings, advancingThirds, koMatches, thirdAssignment);
             if (home != null && away != null) {
                 // Only update if teams changed (avoid unnecessary overwrites)
                 if (!home.equals(match.home()) || !away.equals(match.away())) {
@@ -83,8 +88,8 @@ public class BracketResolver {
             var sources = bracketSources.get(match.id());
             if (sources == null) continue;
 
-            String home = resolve(sources[0], null, null, koMatches);
-            String away = resolve(sources[1], null, null, koMatches);
+            String home = resolve(sources[0], match.id(), null, null, koMatches, null);
+            String away = resolve(sources[1], match.id(), null, null, koMatches, null);
             if (home != null && away != null) {
                 match.setTeams(home, away);
             }
@@ -106,9 +111,11 @@ public class BracketResolver {
      *   "L101"     → loser of match 101 (for 3rd place)
      */
     private static String resolve(String source,
+                                  int currentMatchId,
                                   Map<String, List<Standing>> standings,
                                   Set<String> advancingThirds,
-                                  List<Match> koMatches) {
+                                  List<Match> koMatches,
+                                  Map<Integer, String> thirdAssignment) {
         if (source == null) return null;
 
         // Winner of a match: "W73"
@@ -137,18 +144,11 @@ public class BracketResolver {
         }
 
         // Third-place from candidate groups: "3rd(A,B,C,D,F)"
+        // Use the pre-computed assignment to avoid assigning the same team
+        // to multiple matches.
         if (source.startsWith("3rd(")) {
-            if (advancingThirds == null || standings == null) return null;
-            var inner = source.substring(4, source.length() - 1);
-            var candidates = Arrays.asList(inner.split(","));
-            // Find the highest-ranked advancing third among candidate groups
-            return advancingThirds.stream()
-                .filter(t -> {
-                    var group = groupForTeam(t, standings);
-                    return group != null && candidates.contains(group);
-                })
-                .findFirst()
-                .orElse(null);
+            if (thirdAssignment == null) return null;
+            return thirdAssignment.get(currentMatchId);
         }
 
         // Group position: "1A", "2B", "3C" etc
@@ -337,5 +337,84 @@ public class BracketResolver {
             .limit(8)
             .map(Standing::team)
             .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    // ═══════════════════════════════════════════
+    //  THIRD-PLACE ASSIGNMENT (constraint-satisfaction)
+    // ═══════════════════════════════════════════
+
+    /**
+     * Pre-compute a map of R32 match ID → third-place team, ensuring each
+     * advancing third-place team is assigned to exactly one match.
+     *
+     * Uses backtracking (constraint satisfaction) since FIFA pre-maps 495
+     * possible combinations — a simple "first match" approach fails when
+     * candidate-group lists overlap.
+     */
+    private static Map<Integer, String> assignThirdPlacedMatches(
+            Map<String, List<Standing>> standings,
+            Set<String> advancingThirds,
+            Map<Integer, String[]> bracketSources) {
+        if (advancingThirds == null || advancingThirds.isEmpty()) return Map.of();
+
+        // Find R32 match IDs that have a 3rd-place source and determine
+        // which advancing teams are eligible for each.
+        var eligible = new LinkedHashMap<Integer, List<String>>();
+        for (var entry : bracketSources.entrySet()) {
+            int matchId = entry.getKey();
+            if (matchId < 73 || matchId > 88) continue;
+            String[] sources = entry.getValue();
+            for (String src : sources) {
+                if (src.startsWith("3rd(")) {
+                    var candidates = parseCandidateGroups(src);
+                    var matched = advancingThirds.stream()
+                        .filter(t -> {
+                            var g = groupForTeam(t, standings);
+                            return g != null && candidates.contains(g);
+                        })
+                        .collect(Collectors.toList());
+                    eligible.put(matchId, matched);
+                    break;
+                }
+            }
+        }
+
+        // Backtracking: try to assign each match a unique advancing third
+        var matchIds = List.copyOf(eligible.keySet());
+        var used = new HashSet<String>();
+        var assignment = new LinkedHashMap<Integer, String>();
+
+        if (backtrackAssign(matchIds, 0, eligible, used, assignment)) {
+            return assignment;
+        }
+        return Map.of(); // fallback — should not happen with valid standings
+    }
+
+    /** Parse "3rd(A,B,C,D,F)" → ["A","B","C","D","F"]. */
+    private static List<String> parseCandidateGroups(String source) {
+        var inner = source.substring(4, source.length() - 1);
+        return Arrays.asList(inner.split(","));
+    }
+
+    /** Recursive backtracking for third-place assignment. */
+    private static boolean backtrackAssign(
+            List<Integer> matchIds,
+            int idx,
+            Map<Integer, List<String>> eligible,
+            HashSet<String> used,
+            Map<Integer, String> assignment) {
+        if (idx == matchIds.size()) return true;
+        int matchId = matchIds.get(idx);
+        for (String team : eligible.getOrDefault(matchId, List.of())) {
+            if (used.contains(team)) continue;
+            used.add(team);
+            assignment.put(matchId, team);
+            if (backtrackAssign(matchIds, idx + 1, eligible, used, assignment)) {
+                return true;
+            }
+            used.remove(team);
+            assignment.remove(matchId);
+        }
+        return false;
     }
 }
