@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public class Member implements Serializable {
-    private static final long serialVersionUID = 3L;
+    private static final long serialVersionUID = 2L;
 
     private final String name;
     private final Map<Integer, Prediction> predictions = new HashMap<>();
