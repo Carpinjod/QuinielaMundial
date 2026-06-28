@@ -611,8 +611,9 @@ public class HtmlRenderer {
         var koMatches = group.knockoutMatches();
         var groupFinished = group.groupStageFinished();
 
-        // Group by round
+        // Group by round, ordering matches within each round by kickoff time
         var byRound = koMatches.stream()
+            .sorted(Comparator.comparing(Match::kickoff))
             .collect(Collectors.groupingBy(Match::round, LinkedHashMap::new, Collectors.toList()));
 
         // Determine which round to open by default:
