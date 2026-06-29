@@ -18,7 +18,7 @@ public class Group implements Serializable {
     private final String name;
     private final Map<String, Member> members = new LinkedHashMap<>();
     private final List<Match> matches;
-    private List<Match> knockoutMatches;
+    private transient List<Match> knockoutMatches;
     private transient Runnable onChange;
 
     public Group(String code, String name, List<Match> matches) {
