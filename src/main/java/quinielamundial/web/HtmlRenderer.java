@@ -925,25 +925,24 @@ public class HtmlRenderer {
         } else if (finished) {
             var badgeHtml = predictionResultBadge(match, memberPrediction, false, group);
             // Method bonus indicator for KO matches
-            if (match.actualMethod() != null && memberPrediction != null) {
-                var memberMethod = member == null ? null : member.knockoutMethod(match.id());
-                if (memberMethod != null) {
-                    var methodHit = memberMethod.equals(match.actualMethod());
-                    var methodLabel = switch (match.actualMethod()) {
-                        case "REGULAR" -> "90'";
-                        case "EXTRA_TIME" -> "120'";
-                        case "PENALTIES" -> "PEN";
-                        default -> match.actualMethod();
-                    };
-                    badgeHtml += " <span class='method-result " + (methodHit ? "method-hit" : "method-miss") + "' title='" + (methodHit ? "Acertaste el método (" + methodLabel + ")" : "Fallaste el método (fue " + methodLabel + ")") + "'>" + (methodHit ? "✅" : "❌") + "M</span>";
+            if (match.actualMethod() != null) {
+                var methodLabel = switch (match.actualMethod()) {
+                    case "REGULAR" -> "90'";
+                    case "EXTRA_TIME" -> "120'";
+                    case "PENALTIES" -> "PEN";
+                    default -> match.actualMethod();
+                };
+                if (memberPrediction != null && member != null) {
+                    var memberMethod = member.knockoutMethod(match.id());
+                    if (memberMethod != null) {
+                        var methodHit = memberMethod.equals(match.actualMethod());
+                        var methodCls = methodHit ? "method-hit" : "method-miss";
+                        var title = methodHit ? "Acertaste el método" : "Fallaste el método (fue " + methodLabel + ")";
+                        badgeHtml += " <span class='method-result " + methodCls + "' title='" + title + "'>" + methodLabel + "</span>";
+                    } else {
+                        badgeHtml += " <span class='method-indicator'>" + methodLabel + "</span>";
+                    }
                 } else {
-                    // Show actual method even if member didn't predict
-                    var methodLabel = switch (match.actualMethod()) {
-                        case "REGULAR" -> "90'";
-                        case "EXTRA_TIME" -> "120'";
-                        case "PENALTIES" -> "PEN";
-                        default -> match.actualMethod();
-                    };
                     badgeHtml += " <span class='method-indicator'>" + methodLabel + "</span>";
                 }
             }

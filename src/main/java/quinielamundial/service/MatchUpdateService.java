@@ -143,7 +143,7 @@ public class MatchUpdateService {
         }
     }
 
-    /** Parse the OpenLigaDB JSON array into a map keyed by (team1, team2, date).
+    /** Parse the OpenLigaDB JSON array into a map keyed by normalized (team1, team2).
      *  Extracts both final results (resultTypeID=2) and live scores (resultTypeID=1). */
     private Map<String, ApiMatch> parseApiMatches(String json) {
         var map = new HashMap<String, ApiMatch>();
@@ -158,7 +158,7 @@ public class MatchUpdateService {
                 team1 = GERMAN_TO_ENGLISH.getOrDefault(team1, team1);
                 team2 = GERMAN_TO_ENGLISH.getOrDefault(team2, team2);
 
-                var key = normalize(team1) + "|" + normalize(team2) + "|" + dateOnly(dateTimeUtc);
+                var key = normalize(team1) + "|" + normalize(team2);
 
                 // 1. Final result: only when matchIsFinished=true (resultTypeID=2 = "Endergebnis")
                 var matchIsFinished = getBoolean(obj, "matchIsFinished");
@@ -228,7 +228,7 @@ public class MatchUpdateService {
 
     /** Update a single match from API data. Returns (finalCount, liveCount) for this match. */
     private UpdateResult updateMatch(Match match, Group group, Map<String, ApiMatch> apiMatches) {
-        var key = normalize(match.home()) + "|" + normalize(match.away()) + "|" + dateOnly(match.kickoff().toString());
+        var key = normalize(match.home()) + "|" + normalize(match.away());
         var apiMatch = apiMatches.get(key);
         if (apiMatch == null) return new UpdateResult(0, 0);
 
@@ -295,12 +295,6 @@ public class MatchUpdateService {
 
     private static String normalize(String s) {
         return s == null ? "" : s.toLowerCase().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss").replace(" ", "").replace("-", "");
-    }
-
-    /** Extract just YYYY-MM-DD from an ISO datetime string. */
-    private static String dateOnly(String iso) {
-        if (iso == null) return "";
-        return iso.length() >= 10 ? iso.substring(0, 10) : iso;
     }
 
     /** Result of a single group update pass. */
