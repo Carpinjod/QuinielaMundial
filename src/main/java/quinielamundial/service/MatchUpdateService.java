@@ -144,7 +144,8 @@ public class MatchUpdateService {
     }
 
     /** Parse the OpenLigaDB JSON array into a map keyed by normalized (team1, team2).
-     *  Extracts both final results (resultTypeID=2) and live scores (resultTypeID=1). */
+     *  Always includes every match — even those without scores — so that kickoff
+     *  times can be synced for all matches, not just started/finished ones. */
     private Map<String, ApiMatch> parseApiMatches(String json) {
         var map = new HashMap<String, ApiMatch>();
         try {
@@ -160,28 +161,24 @@ public class MatchUpdateService {
 
                 var key = normalize(team1) + "|" + normalize(team2);
 
-                // 1. Final result: only when matchIsFinished=true (resultTypeID=2 = "Endergebnis")
+                var apiMatch = new ApiMatch();
+                apiMatch.dateTimeUtc = dateTimeUtc;
+                apiMatch.team1 = team1;
+                apiMatch.team2 = team2;
+
+                // 1. Final result: only when matchIsFinished=true
                 var matchIsFinished = getBoolean(obj, "matchIsFinished");
                 if (matchIsFinished) {
                     Integer finalHome = extractResult(obj, 2, "pointsTeam1");
                     Integer finalAway = extractResult(obj, 2, "pointsTeam2");
                     if (finalHome != null && finalAway != null) {
-                        var apiMatch = new ApiMatch();
-                        apiMatch.dateTimeUtc = dateTimeUtc;
-                        apiMatch.team1 = team1;
-                        apiMatch.team2 = team2;
                         apiMatch.homeGoals = finalHome;
                         apiMatch.awayGoals = finalAway;
                         apiMatch.isFinal = true;
-                        map.put(key, apiMatch);
-                        continue;
                     }
                 }
 
-                // 2. Live / in-progress result:
-                //    First try resultTypeID=2 (current score — OpenLigaDB reports "Endergebnis"
-                //    from minute 0, updating it with every goal). Fall back to resultTypeID=1
-                //    ("Halbzeit", only available after ~45').
+                // 2. Live / in-progress result: if not yet final, try to extract live score
                 if (!matchIsFinished) {
                     Integer liveHome = extractResult(obj, 2, "pointsTeam1");
                     Integer liveAway = extractResult(obj, 2, "pointsTeam2");
@@ -190,16 +187,12 @@ public class MatchUpdateService {
                         liveAway = extractResult(obj, 1, "pointsTeam2");
                     }
                     if (liveHome != null && liveAway != null) {
-                        var apiMatch = new ApiMatch();
-                        apiMatch.dateTimeUtc = dateTimeUtc;
-                        apiMatch.team1 = team1;
-                        apiMatch.team2 = team2;
                         apiMatch.homeGoals = liveHome;
                         apiMatch.awayGoals = liveAway;
-                        apiMatch.isFinal = false;
-                        map.put(key, apiMatch);
                     }
                 }
+
+                map.put(key, apiMatch);
             }
         } catch (Exception e) {
             LOG.error("Parse error: {}", e.getMessage());
@@ -244,6 +237,10 @@ public class MatchUpdateService {
                 // skip if parsing fails — not critical
             }
         }
+
+        // Match hasn't started yet in the API — no scores to process (homeGoals stays null).
+        // Kickoff was already synced above if available; nothing else to do.
+        if (apiMatch.homeGoals == null) return new UpdateResult(0, 0);
 
         try {
             if (apiMatch.isFinal && !match.finished()) {
