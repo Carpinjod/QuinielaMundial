@@ -4,7 +4,7 @@ import java.io.Serializable;
 import java.time.Instant;
 
 public class Match implements Serializable {
-    private static final long serialVersionUID = 3L;
+    private static final long serialVersionUID = 2L;
 
     /** Round constants for knockout stages. */
     public static final int ROUND_GROUP = 0;
