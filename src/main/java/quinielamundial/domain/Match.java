@@ -58,6 +58,11 @@ public class Match implements Serializable {
     /** Whether teams have been assigned to this slot. */
     public boolean teamsKnown() { return home != null && away != null; }
 
+    /** Override kickoff time from API data (corrects hardcoded schedule errors). */
+    public void setKickoff(Instant kickoff) {
+        this.kickoff = kickoff;
+    }
+
     /** Assign teams to a knockout match (used when bracket is resolved). */
     public void setTeams(String home, String away) {
         if (finished) throw new IllegalStateException("No se pueden cambiar los equipos de un partido ya finalizado.");

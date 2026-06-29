@@ -232,6 +232,19 @@ public class MatchUpdateService {
         var apiMatch = apiMatches.get(key);
         if (apiMatch == null) return new UpdateResult(0, 0);
 
+        // Sync kickoff from API data — API is the source of truth for dates
+        if (apiMatch.dateTimeUtc != null) {
+            try {
+                var apiInstant = Instant.parse(apiMatch.dateTimeUtc);
+                if (!apiInstant.equals(match.kickoff())) {
+                    match.setKickoff(apiInstant);
+                    LOG.info("📅 {} vs {} — kickoff corrected", match.home(), match.away());
+                }
+            } catch (Exception e) {
+                // skip if parsing fails — not critical
+            }
+        }
+
         try {
             if (apiMatch.isFinal && !match.finished()) {
                 group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);

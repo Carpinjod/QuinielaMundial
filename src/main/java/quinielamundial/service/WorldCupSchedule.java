@@ -183,7 +183,7 @@ public class WorldCupSchedule {
             new Match(73,  1, Match.ROUND_R32, null, null, Instant.parse("2026-06-28T19:00:00Z")),  // 2A vs 2B
             new Match(74,  1, Match.ROUND_R32, null, null, Instant.parse("2026-06-29T17:00:00Z")),  // 1E vs 3rd(A/B/C/D/F)
             new Match(75,  1, Match.ROUND_R32, null, null, Instant.parse("2026-06-30T01:00:00Z")),  // 1F vs 2C
-            new Match(76,  1, Match.ROUND_R32, null, null, Instant.parse("2026-06-29T21:00:00Z")),  // 1C vs 2F
+            new Match(76,  1, Match.ROUND_R32, null, null, Instant.parse("2026-06-30T17:00:00Z")),  // 1C vs 2F
             new Match(77,  1, Match.ROUND_R32, null, null, Instant.parse("2026-06-30T21:00:00Z")),  // 1I vs 3rd(C/D/F/G/H)
             new Match(78,  1, Match.ROUND_R32, null, null, Instant.parse("2026-06-30T17:00:00Z")),  // 2E vs 2I
             new Match(79,  1, Match.ROUND_R32, null, null, Instant.parse("2026-07-01T01:00:00Z")),  // 1A vs 3rd(C/E/F/H/I)
@@ -194,7 +194,7 @@ public class WorldCupSchedule {
             new Match(84,  1, Match.ROUND_R32, null, null, Instant.parse("2026-07-02T19:00:00Z")),  // 1H vs 2J
             new Match(85,  1, Match.ROUND_R32, null, null, Instant.parse("2026-07-03T03:00:00Z")),  // 1B vs 3rd(E/F/G/I/J)
             new Match(86,  1, Match.ROUND_R32, null, null, Instant.parse("2026-07-03T22:00:00Z")),  // 1J vs 2H
-            new Match(87,  1, Match.ROUND_R32, null, null, Instant.parse("2026-07-03T01:30:00Z")),  // 1K vs 3rd(D/E/I/J/L)
+            new Match(87,  1, Match.ROUND_R32, null, null, Instant.parse("2026-07-04T01:30:00Z")),  // 1K vs 3rd(D/E/I/J/L)
             new Match(88,  1, Match.ROUND_R32, null, null, Instant.parse("2026-07-03T18:00:00Z")),  // 2D vs 2G
 
             // ── Round of 16 (M89–M96) ──
