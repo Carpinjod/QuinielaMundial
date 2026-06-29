@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import quinielamundial.domain.Group;
+import quinielamundial.domain.Match;
 import quinielamundial.logging.Logger;
 
 import java.net.URI;
@@ -209,46 +210,59 @@ public class MatchUpdateService {
     private UpdateResult updateGroup(Group group, Map<String, ApiMatch> apiMatches) {
         var finalCount = 0;
         var liveCount = 0;
+        // Process group-stage matches
         for (var match : group.matches()) {
-            var key = normalize(match.home()) + "|" + normalize(match.away()) + "|" + dateOnly(match.kickoff().toString());
-            var apiMatch = apiMatches.get(key);
-            if (apiMatch == null) continue;
-
-            try {
-                if (apiMatch.isFinal && !match.finished()) {
-                    group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
-                    finalCount++;
-                    LOG.info("✓ {} {}–{} {}", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
-                } else if (apiMatch.isFinal && match.finished()) {
-                    // Match already marked as finished — verify scores match (old bug may have
-                    // recorded wrong result, e.g. halftime 0-0 as final). Re-register if different.
-                    var storedHome = match.homeGoals();
-                    var storedAway = match.awayGoals();
-                    if (storedHome == null || storedAway == null
-                        || storedHome != apiMatch.homeGoals || storedAway != apiMatch.awayGoals) {
-                        group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
-                        finalCount++;
-                        LOG.info("🔄 {} {}–{} {} (corrected from {}-{})",
-                            match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away(),
-                            storedHome == null ? "?" : storedHome,
-                            storedAway == null ? "?" : storedAway);
-                    }
-                } else if (!apiMatch.isFinal && !match.finished()) {
-                    group.updateLiveScore(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
-                    liveCount++;
-                    LOG.info("🔴 {} {}–{} {} (live)", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
-                } else if (!apiMatch.isFinal && match.finished()) {
-                    // Match was incorrectly marked as finished by previous bug (old parsing treated
-                    // resultTypeID=2 as final even when matchIsFinished=false). Revert and apply live score.
-                    group.revertFinished(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
-                    liveCount++;
-                    LOG.info("🔄 {} {}–{} {} (live, was incorrectly finished)", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
-                }
-            } catch (Exception e) {
-                LOG.error("Update failed for match {}: {}", match.id(), e.getMessage());
-            }
+            var result = updateMatch(match, group, apiMatches);
+            finalCount += result.finalCount();
+            liveCount += result.liveCount();
+        }
+        // Process knockout matches (live scores + auto-results)
+        for (var match : group.knockoutMatches()) {
+            if (!match.teamsKnown()) continue; // skip unresolved bracket slots
+            var result = updateMatch(match, group, apiMatches);
+            finalCount += result.finalCount();
+            liveCount += result.liveCount();
         }
         return new UpdateResult(finalCount, liveCount);
+    }
+
+    /** Update a single match from API data. Returns (finalCount, liveCount) for this match. */
+    private UpdateResult updateMatch(Match match, Group group, Map<String, ApiMatch> apiMatches) {
+        var key = normalize(match.home()) + "|" + normalize(match.away()) + "|" + dateOnly(match.kickoff().toString());
+        var apiMatch = apiMatches.get(key);
+        if (apiMatch == null) return new UpdateResult(0, 0);
+
+        try {
+            if (apiMatch.isFinal && !match.finished()) {
+                group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                LOG.info("✓ {} {}–{} {}", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
+                return new UpdateResult(1, 0);
+            } else if (apiMatch.isFinal && match.finished()) {
+                var storedHome = match.homeGoals();
+                var storedAway = match.awayGoals();
+                if (storedHome == null || storedAway == null
+                    || storedHome != apiMatch.homeGoals || storedAway != apiMatch.awayGoals) {
+                    group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                    LOG.info("🔄 {} {}–{} {} (corrected from {}-{})",
+                        match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away(),
+                        storedHome == null ? "?" : storedHome,
+                        storedAway == null ? "?" : storedAway);
+                    return new UpdateResult(1, 0);
+                }
+                return new UpdateResult(0, 0);
+            } else if (!apiMatch.isFinal && !match.finished()) {
+                group.updateLiveScore(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                LOG.info("🔴 {} {}–{} {} (live)", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
+                return new UpdateResult(0, 1);
+            } else if (!apiMatch.isFinal && match.finished()) {
+                group.revertFinished(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                LOG.info("🔄 {} {}–{} {} (live, was incorrectly finished)", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
+                return new UpdateResult(0, 1);
+            }
+        } catch (Exception e) {
+            LOG.error("Update failed for match {}: {}", match.id(), e.getMessage());
+        }
+        return new UpdateResult(0, 0);
     }
 
     /** Extract a specific result type from matchResults array, e.g. resultTypeID=2 (final) or =1 (live). */
