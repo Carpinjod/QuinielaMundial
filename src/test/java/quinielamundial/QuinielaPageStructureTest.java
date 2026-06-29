@@ -440,6 +440,32 @@ class QuinielaPageStructureTest {
             "VS badge must be present between teams");
     }
 
+    @Test
+    void knockoutCardShowsAdvancingPickerForMember() {
+        var group = service.createGroup("Test", "Ana");
+        TestUtils.setFutureKickoffs(group);
+        var ana = group.creator();
+
+        // Resolve bracket so KO matches have teams
+        service.resolveBracket(group);
+
+        // Render knockout view (jornada=0)
+        var html = renderer.groupPage(group, ana, service.candidates(), null, false, 0, null);
+
+        assertAll("Advancing picker in knockout form",
+            () -> assertTrue(html.contains("class='advancing-picker'"),
+                "Advancing picker container"),
+            () -> assertTrue(html.contains("class='adv-label'"),
+                "Picker label: ¿Quién avanza?"),
+            () -> assertTrue(html.contains("class='adv-options'"),
+                "Advancing options container"),
+            () -> assertTrue(html.contains("class='adv-option'"),
+                "Advancing option button"),
+            () -> assertTrue(html.contains("name='advancing'"),
+                "Advancing radio input name")
+        );
+    }
+
     // ── Auth pages ──
 
     @Test

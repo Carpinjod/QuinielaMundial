@@ -2,6 +2,7 @@ package quinielamundial;
 
 import org.junit.jupiter.api.Test;
 import quinielamundial.domain.Prediction;
+import quinielamundial.domain.Match;
 import quinielamundial.persistence.StateStore;
 import quinielamundial.service.QuinielaService;
 import quinielamundial.web.HtmlRenderer;
@@ -59,6 +60,93 @@ class QuinielaDomainTest {
         assertEquals(0, pEntry.score().totalPoints());
         assertEquals(0, pEntry.score().exactHits());
         assertEquals(0, pEntry.score().outcomeHits());
+    }
+
+    @Test
+    void knockoutScoringWithAdvancing() {
+        var service = new QuinielaService();
+        var group = service.createGroup("Grupo", "Ana");
+        TestUtils.setFutureKickoffs(group);
+        var ana = group.creator();
+        var luis = group.join("Luis");
+
+        // Resolve bracket so KO matches have teams assigned
+        service.resolveBracket(group);
+
+        // Find a R32 match with resolved teams
+        var koMatches = group.knockoutMatches();
+        var koMatch = koMatches.stream().filter(Match::teamsKnown).findFirst().orElseThrow();
+        var home = koMatch.home();
+        var away = koMatch.away();
+
+        // Case 1: Exact score + correct advancing = 3pts
+        group.submitPrediction(ana.token(), koMatch.id(), 2, 1, 1); // home wins, advancing=home
+        // Register result: home wins 2-1 → advancing = home (no penalties)
+        group.registerResult(koMatch.id(), 2, 1, home);
+        var anaScore = group.leaderboard("Argentina").stream()
+            .filter(e -> e.member().name().equals("Ana")).findFirst().get();
+        assertEquals(3, anaScore.score().totalPoints(), "Exact + correct advancing = 3pts");
+        assertEquals(1, anaScore.score().exactHits());
+        assertEquals(0, anaScore.score().outcomeHits());
+
+        // Case 2: Correct advancing but wrong score = 1pt
+        var koMatch2 = koMatches.stream().filter(m -> !m.finished() && m.teamsKnown()).findFirst().orElseThrow();
+        var home2 = koMatch2.home();
+        var away2 = koMatch2.away();
+        group.submitPrediction(luis.token(), koMatch2.id(), 0, 0, 1); // predicts 0-0, advancing=home
+        group.registerResult(koMatch2.id(), 1, 0, home2); // actual 1-0 home (no pens)
+        var luisScore = group.leaderboard("Argentina").stream()
+            .filter(e -> e.member().name().equals("Luis")).findFirst().get();
+        assertEquals(1, luisScore.score().totalPoints(), "Correct advancing + wrong score = 1pt");
+        assertEquals(0, luisScore.score().exactHits());
+        assertEquals(1, luisScore.score().outcomeHits());
+    }
+
+    @Test
+    void knockoutAdvancingPickRequiredForDraw() {
+        var service = new QuinielaService();
+        var group = service.createGroup("Grupo", "Ana");
+        TestUtils.setFutureKickoffs(group);
+        var ana = group.creator();
+
+        service.resolveBracket(group);
+        var koMatch = group.knockoutMatches().stream().filter(Match::teamsKnown).findFirst().orElseThrow();
+
+        // Predict a draw without advancing → should throw
+        assertThrows(IllegalArgumentException.class,
+            () -> group.submitPrediction(ana.token(), koMatch.id(), 1, 1, null),
+            "Draw prediction requires advancing pick");
+
+        // Predict a draw WITH advancing → should succeed
+        assertDoesNotThrow(() -> group.submitPrediction(ana.token(), koMatch.id(), 1, 1, 1),
+            "Draw prediction with advancing should be valid");
+    }
+
+    @Test
+    void knockoutScoringWithPenalties() {
+        var service = new QuinielaService();
+        var group = service.createGroup("Grupo", "Ana");
+        TestUtils.setFutureKickoffs(group);
+        var ana = group.creator();
+
+        service.resolveBracket(group);
+        var koMatch = group.knockoutMatches().stream().filter(Match::teamsKnown).findFirst().orElseThrow();
+        var home = koMatch.home();
+        var away = koMatch.away();
+
+        // Predict draw (1-1) with away advancing
+        group.submitPrediction(ana.token(), koMatch.id(), 1, 1, 2); // draw, advancing=away
+
+        // Actual result: 1-1 after 120', away wins on penalties
+        group.registerResult(koMatch.id(), 1, 1, away);
+
+        var score = group.leaderboard("Argentina").stream()
+            .filter(e -> e.member().name().equals("Ana")).findFirst().get();
+
+        // Exact 1-1 + correct advancing (away) = 3pt
+        assertEquals(3, score.score().totalPoints(),
+            "Exact draw score + correct penalty advancing = 3pts");
+        assertEquals(1, score.score().exactHits());
     }
 
     @Test

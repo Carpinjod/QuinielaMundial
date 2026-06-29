@@ -175,6 +175,19 @@ public class MatchUpdateService {
                         apiMatch.homeGoals = finalHome;
                         apiMatch.awayGoals = finalAway;
                         apiMatch.isFinal = true;
+
+                        // Determine advancing team (for KO matches — who won on the day)
+                        if (!finalHome.equals(finalAway)) {
+                            // Decided in regular / extra time
+                            apiMatch.advancingTeam = finalHome > finalAway ? team1 : team2;
+                        } else {
+                            // Draw → check penalty shootout (resultTypeID=3)
+                            Integer penHome = extractResult(obj, 3, "pointsTeam1");
+                            Integer penAway = extractResult(obj, 3, "pointsTeam2");
+                            if (penHome != null && penAway != null && !penHome.equals(penAway)) {
+                                apiMatch.advancingTeam = penHome > penAway ? team1 : team2;
+                            }
+                        }
                     }
                 }
 
@@ -244,7 +257,7 @@ public class MatchUpdateService {
 
         try {
             if (apiMatch.isFinal && !match.finished()) {
-                group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals, apiMatch.advancingTeam);
                 LOG.info("✓ {} {}–{} {}", match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away());
                 return new UpdateResult(1, 0);
             } else if (apiMatch.isFinal && match.finished()) {
@@ -252,7 +265,7 @@ public class MatchUpdateService {
                 var storedAway = match.awayGoals();
                 if (storedHome == null || storedAway == null
                     || storedHome != apiMatch.homeGoals || storedAway != apiMatch.awayGoals) {
-                    group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals);
+                    group.registerResult(match.id(), apiMatch.homeGoals, apiMatch.awayGoals, apiMatch.advancingTeam);
                     LOG.info("🔄 {} {}–{} {} (corrected from {}-{})",
                         match.home(), apiMatch.homeGoals, apiMatch.awayGoals, match.away(),
                         storedHome == null ? "?" : storedHome,
@@ -317,5 +330,7 @@ public class MatchUpdateService {
         Integer homeGoals;
         Integer awayGoals;
         boolean isFinal;
+        /** Who actually advanced (determined from regular-time winner or penalty shootout). */
+        String advancingTeam;
     }
 }

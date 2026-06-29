@@ -271,10 +271,32 @@ public class HtmlRenderer {
 
             // Base score (w/o star multiplier) for exact/outcome counting — mirrors Group.scoreMatch
             int base;
-            if (p.homeGoals() == m.homeGoals() && p.awayGoals() == m.awayGoals()) base = 3;
-            else {
-                var actual = m.result();
-                base = (actual != null && p.outcome().equals(actual)) ? 1 : 0;
+            if (m.knockout()) {
+                var actualWinner = m.winner();
+                if (actualWinner == null) { base = 0; }
+                else {
+                    var advancingPick = member.advancingPicks().get(m.id());
+                    if (advancingPick == null) {
+                        // Fallback for old predictions
+                        if (p.homeGoals() == m.homeGoals() && p.awayGoals() == m.awayGoals()) base = 3;
+                        else {
+                            var actual = m.result();
+                            base = (actual != null && p.outcome().equals(actual)) ? 1 : 0;
+                        }
+                    } else {
+                        var pickedTeam = advancingPick == 1 ? m.home() : m.away();
+                        var advancingCorrect = pickedTeam != null && pickedTeam.equals(actualWinner);
+                        if (advancingCorrect && p.homeGoals() == m.homeGoals() && p.awayGoals() == m.awayGoals()) base = 3;
+                        else if (advancingCorrect) base = 1;
+                        else base = 0;
+                    }
+                }
+            } else {
+                if (p.homeGoals() == m.homeGoals() && p.awayGoals() == m.awayGoals()) base = 3;
+                else {
+                    var actual = m.result();
+                    base = (actual != null && p.outcome().equals(actual)) ? 1 : 0;
+                }
             }
             if (base == 3) exactHits++;
             else if (base == 1) outcomeHits++;
@@ -521,7 +543,7 @@ public class HtmlRenderer {
         // 8. Status / result badge (rightmost column)
         var statusHtml = "";
         if (finished) {
-            statusHtml = "<div class='match-status'>" + predictionResultBadge(match, memberPrediction, starSelected, group) + "</div>";
+            statusHtml = "<div class='match-status'>" + predictionResultBadge(match, memberPrediction, starSelected, member, group) + "</div>";
         } else if (started) {
             statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
         }
@@ -756,6 +778,9 @@ public class HtmlRenderer {
         var homeFormVal = memberPrediction == null ? "" : String.valueOf(memberPrediction.homeGoals());
         var awayFormVal = memberPrediction == null ? "" : String.valueOf(memberPrediction.awayGoals());
 
+        // 4b. Advancing pick for knockout matches
+        var advancingVal = member == null ? null : member.advancingPicks().get(match.id());
+
         // 5. Home team
         String homeHtml;
         if (!teamsKnown && (match.home() == null || match.away() == null)) {
@@ -811,7 +836,7 @@ public class HtmlRenderer {
         if (!teamsKnown) {
             statusHtml = "<div class='match-status locked'>🔒</div>";
         } else if (finished) {
-            var badgeHtml = predictionResultBadge(match, memberPrediction, false, group);
+            var badgeHtml = predictionResultBadge(match, memberPrediction, false, member, group);
             statusHtml = "<div class='match-status'>" + badgeHtml + "</div>";
         } else if (started) {
             statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
@@ -822,10 +847,27 @@ public class HtmlRenderer {
         if (isFormMode) {
             var confirmAttr = memberPrediction == null ? "" : " data-confirm=\"¿Actualizar tu pronóstico de " + homeFormVal + "–" + awayFormVal + " a otro resultado?\"";
             var btnLabel = memberPrediction == null ? "Pronosticar" : "Actualizar";
+
+            // Advancing picker for knockout matches
+            String advancingHtml = "";
+            if (match.knockout() && match.home() != null && match.away() != null) {
+                var homeChecked = (advancingVal != null && advancingVal == 1) ? " checked" : "";
+                var awayChecked = (advancingVal != null && advancingVal == 2) ? " checked" : "";
+                advancingHtml = "<div class='advancing-picker' id='adv-picker-" + match.id() + "'>"
+                    + "<label class='adv-label'>¿Quién avanza en caso de empate?</label>"
+                    + "<div class='adv-options'>"
+                    + "<label class='adv-option" + (homeChecked.isEmpty() ? "" : " selected") + "'><input type='radio' name='advancing' value='1'" + homeChecked + ">"
+                    + "<span>" + escape(teamEs(match.home())) + "</span></label>"
+                    + "<label class='adv-option" + (awayChecked.isEmpty() ? "" : " selected") + "'><input type='radio' name='advancing' value='2'" + awayChecked + ">"
+                    + "<span>" + escape(teamEs(match.away())) + "</span></label>"
+                    + "</div></div>";
+            }
+
             matchTeamsHtml = "<form method='post' action='/groups/" + group.code() + "/prediction' class='score-form team-form'" + confirmAttr + ">"
                 + hiddenToken(member.token()) + "<input type='hidden' name='jornada' value='0'>"
                 + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
                 + "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>"
+                + advancingHtml
                 + "<button type='submit' class='btn-predict'>" + btnLabel + "</button>"
                 + "</form>";
             matchActionsHtml = "<div class='match-actions'>" + statusHtml + "</div>";
@@ -1138,10 +1180,9 @@ public class HtmlRenderer {
     }
 
     /** Build a coloured result indicator for a finished match + user prediction.
-     *  Shows actual points earned, including the star-match multiplier (×2 for group stage).
      *  Returns e.g. "🎯 +6 ⭐" (exact + star), "🎯 +3" (exact), "✅ +2 ⭐" (winner + star),
      *  "✅ +1" (winner), "❌ +0" (wrong), or "—" (no prediction). */
-    private String predictionResultBadge(Match match, quinielamundial.domain.Prediction prediction, boolean starMatch, Group group) {
+    private String predictionResultBadge(Match match, quinielamundial.domain.Prediction prediction, boolean starMatch, Member member, Group group) {
         if (!match.finished()) return "";
         // Group comparison: how many members got this match right
         var vsGroup = "";
@@ -1154,8 +1195,7 @@ public class HtmlRenderer {
                 .filter(m -> {
                     var p = m.predictions().get(match.id());
                     if (p == null || actual == null) return false;
-                    return (p.homeGoals() == match.homeGoals() && p.awayGoals() == match.awayGoals())
-                        || p.outcome().equals(actual);
+                    return group.score(m, "").totalPoints() > 0; // simplified check
                 })
                 .count();
             if (total > 0) {
@@ -1163,21 +1203,51 @@ public class HtmlRenderer {
             }
         }
         if (prediction == null) return "<span class='result-dot dot-none'>—" + vsGroup + "</span>";
-        var actual = match.result();
-        if (actual == null) return "<span class='result-dot dot-none'>—</span>";
-        String icon, label;
+
+        // Determine points using the same logic as Group.scoreMatch
         int base;
-        if (prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals()) {
-            icon = "🎯"; label = "Exacto"; base = 3;
-        } else if (prediction.outcome().equals(actual)) {
-            icon = "✅"; label = "Ganador"; base = 1;
+        String icon, label;
+        if (match.knockout()) {
+            var actualWinner = match.winner();
+            if (actualWinner == null) return "<span class='result-dot dot-none'>—</span>";
+            var advancingPick = member == null ? null : member.advancingPicks().get(match.id());
+            if (advancingPick == null) {
+                // Fallback for old predictions (before advancing pick existed)
+                if (prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals()) {
+                    base = 3; icon = "🎯"; label = "Exacto";
+                } else {
+                    var actual = match.result();
+                    if (actual != null && prediction.outcome().equals(actual)) {
+                        base = 1; icon = "✅"; label = "Ganador";
+                    } else {
+                        base = 0; icon = "❌"; label = "Fallado";
+                    }
+                }
+            } else {
+                var pickedTeam = advancingPick == 1 ? match.home() : match.away();
+                var advancingCorrect = pickedTeam != null && pickedTeam.equals(actualWinner);
+                if (advancingCorrect && prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals()) {
+                    base = 3; icon = "🎯"; label = "Exacto";
+                } else if (advancingCorrect) {
+                    base = 1; icon = "✅"; label = "Avanza";
+                } else {
+                    base = 0; icon = "❌"; label = "Fallado";
+                }
+            }
         } else {
-            icon = "❌"; label = "Fallado"; base = 0;
+            if (prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals()) {
+                base = 3; icon = "🎯"; label = "Exacto";
+            } else {
+                var actual = match.result();
+                if (actual != null && prediction.outcome().equals(actual)) {
+                    base = 1; icon = "✅"; label = "Ganador";
+                } else {
+                    base = 0; icon = "❌"; label = "Fallado";
+                }
+            }
         }
         var pts = starMatch ? base * 2 : base;
         var starIcon = starMatch && base > 0 ? " ⭐" : "";
-        // Method bonus for KO matches (using viewer as null — bonus shown only for the member's own badge)
-        // The badge is only shown for the current member, so the calling code should pass the right member.
         return "<span class='result-dot dot-" + (base == 3 ? "exact" : base == 1 ? "winner" : "wrong") + "'>" + icon + " +" + pts + starIcon + vsGroup + "</span>";
     }
 
@@ -1447,6 +1517,12 @@ public class HtmlRenderer {
             + ".pred-vs .pred-sep{font-family:var(--font-mono);font-size:clamp(11px,1vw,14px);color:var(--text-dim);margin:0 1px}"
             + ".team-form{display:flex;flex-direction:column;align-items:center;gap:clamp(6px,.6vw,10px);width:100%}"
             + ".team-form .btn-predict{margin-top:clamp(2px,.3vw,4px)}"
+            + ".advancing-picker{width:100%;display:flex;flex-direction:column;align-items:center;gap:4px;padding:clamp(4px,.5vw,8px) 0}"
+            + ".adv-label{font-size:clamp(11px,.9vw,13px);color:var(--text-dim);font-weight:500}"
+            + ".adv-options{display:flex;gap:clamp(6px,.8vw,12px)}"
+            + ".adv-option{cursor:pointer;padding:clamp(3px,.3vw,6px) clamp(8px,1vw,16px);border-radius:var(--radius-sm);border:2px solid var(--border);font-size:clamp(12px,1vw,14px);font-weight:600;transition:all .15s;color:var(--text-sec);background:transparent}"
+            + ".adv-option.selected,.adv-option:has(input:checked){border-color:var(--pri);color:var(--pri);background:var(--pri-bg-alpha)}"
+            + ".adv-option input{display:none}"
             + ".result-dot{justify-content:center}"
             + ".match-row-extras{display:flex;flex-wrap:wrap;align-items:center;gap:clamp(8px,1vw,14px);padding:clamp(10px,1.2vw,14px) clamp(12px,1.5vw,20px) clamp(12px,1.4vw,18px);border-top:1px solid var(--border)}"
             + ".match-time{font-family:var(--font-mono);font-size:clamp(11px,1vw,14px);color:var(--text-dim);text-align:center;white-space:nowrap;font-weight:500;display:flex;flex-direction:column;align-items:center;line-height:1.3;gap:1px}"

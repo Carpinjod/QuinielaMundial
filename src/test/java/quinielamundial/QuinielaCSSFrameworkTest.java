@@ -206,6 +206,17 @@ class QuinielaCSSFrameworkTest {
     }
 
     @Test
+    void advancingPickerStylesPresent() {
+        var css = cssBlock();
+        assertAll("Advancing picker styles",
+            () -> assertTrue(css.contains(".advancing-picker{"), ".advancing-picker"),
+            () -> assertTrue(css.contains(".adv-label{"), ".adv-label"),
+            () -> assertTrue(css.contains(".adv-options{"), ".adv-options"),
+            () -> assertTrue(css.contains(".adv-option{"), ".adv-option")
+        );
+    }
+
+    @Test
     void predictionToggleStylesPresent() {
         var css = cssBlock();
         assertAll("Predictions toggle",

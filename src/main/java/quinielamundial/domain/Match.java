@@ -4,7 +4,7 @@ import java.io.Serializable;
 import java.time.Instant;
 
 public class Match implements Serializable {
-    private static final long serialVersionUID = 2L;
+    private static final long serialVersionUID = 3L;
 
     /** Round constants for knockout stages. */
     public static final int ROUND_GROUP = 0;
@@ -26,6 +26,8 @@ public class Match implements Serializable {
     private int groupRound;
     private Integer homeGoals;
     private Integer awayGoals;
+    /** Who actually advanced (for KO matches decided in regular time, extra time, or penalties). */
+    private String advancingTeam;
     private boolean finished;
 
     /** Live (in-progress) scores — NOT persisted, re-fetched from API on restart. */
@@ -52,6 +54,8 @@ public class Match implements Serializable {
     public Instant kickoff() { return kickoff; }
     public Integer homeGoals() { return homeGoals; }
     public Integer awayGoals() { return awayGoals; }
+    public String advancingTeam() { return advancingTeam; }
+    public void setAdvancingTeam(String team) { this.advancingTeam = team; }
     public boolean finished() { return finished; }
     public boolean knockout() { return round >= ROUND_R32; }
 
@@ -99,12 +103,15 @@ public class Match implements Serializable {
         this.hasLiveScore = false; // live score is superseded by final result
     }
 
-    /** Winning team name, or null if not finished / draw (KO can't end in draw). */
+    /** Winning team name, or null if not finished.
+     *  For KO matches, returns the advancing team (regular time, extra time, or penalties).
+     *  For group matches, returns null on draw (draw is a valid final result). */
     public String winner() {
         if (!finished) return null;
+        if (advancingTeam != null) return advancingTeam;
         if (homeGoals > awayGoals) return home;
         if (awayGoals > homeGoals) return away;
-        return null; // KO matches go to extra time / pens, but we treat draw as no-winner
+        return null;
     }
 
     /** Returns "1" (home win), "X" (draw), or "2" (away win) if finished, null otherwise. */
