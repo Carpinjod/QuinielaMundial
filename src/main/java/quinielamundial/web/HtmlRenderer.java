@@ -5,8 +5,6 @@ import quinielamundial.domain.Match;
 import quinielamundial.domain.Member;
 import quinielamundial.domain.Prediction;
 import quinielamundial.domain.RankingEntry;
-import quinielamundial.domain.RoundMomentum;
-
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -600,20 +598,7 @@ public class HtmlRenderer {
                 return "<li><b>" + escape(other.name()) + "</b>: 🔒 oculto</li>";
             var scoreHtml = "<span class='pred-score'>" + prediction.homeGoals() + "–" + prediction.awayGoals() + "</span>"
                 + (prediction.star() ? " ⭐" : "");
-            var methodHtml = "";
-            if (match.knockout()) {
-                var predMethod = other.knockoutMethod(match.id());
-                if (predMethod != null) {
-                    var methodLabel = switch (predMethod) {
-                        case "REGULAR" -> "90'";
-                        case "EXTRA_TIME" -> "120'";
-                        case "PENALTIES" -> "PEN";
-                        default -> predMethod;
-                    };
-                    methodHtml = " <span class='pred-method'>" + methodLabel + "</span>";
-                }
-            }
-            return "<li><b>" + escape(other.name()) + "</b>: " + scoreHtml + methodHtml + "</li>";
+            return "<li><b>" + escape(other.name()) + "</b>: " + scoreHtml + "</li>";
         }).collect(Collectors.joining(""));
 
         var count = (int) group.members().values().stream().filter(m -> m.predictions().containsKey(match.id())).count();
@@ -700,12 +685,6 @@ public class HtmlRenderer {
                 .append("</span></summary>")
                 .append("<div class='jor-matches'>");
 
-            // ── Momentum card for this round ──
-            var momentum = group.computeRoundMomentum(round, championTeam);
-            if (momentum.anyFinished()) {
-                sb.append(momentumCard(momentum));
-            }
-
             // ── Knockout cards (wrapped for pending filter) ──
             for (var match : matches) {
                 var isActive = member != null && !match.finished() && match.teamsKnown();
@@ -734,82 +713,6 @@ public class HtmlRenderer {
         }
 
         return filterBar + accordion;
-    }
-
-    // ── Round momentum card ──
-    private String momentumCard(RoundMomentum m) {
-        var statusBadge = m.complete()
-            ? "<span class='mom-status mom-done'>✅</span>"
-            : "<span class='mom-status mom-live'>🔄 En curso</span>";
-
-        var sb = new StringBuilder();
-        sb.append("<div class='momentum-card'>")
-            .append("<div class='mom-header'>")
-            .append("<span class='mom-badge'>🔥 MOMENTUM</span>")
-            .append("<span class='mom-round'>").append(escape(m.roundName())).append("</span>")
-            .append(statusBadge)
-            .append("</div><div class='mom-grid'>");
-
-        // ── Climber ──
-        if (m.climber() != null) {
-            sb.append("<div class='mom-item mom-climber'>")
-                .append("<div class='mom-icon'>📈</div>")
-                .append("<div class='mom-body'>")
-                .append("<span class='mom-label'>MÁS SUBE</span>")
-                .append("<span class='mom-name'>").append(escape(m.climber().memberName())).append("</span>")
-                .append("<span class='mom-detail'>+").append(m.climber().positionsClimbed())
-                .append(" puesto").append(m.climber().positionsClimbed() == 1 ? "" : "s")
-                .append(" · ").append(m.climber().roundPoints()).append(" pts</span>")
-                .append("</div></div>");
-        }
-
-        // ── Unique hit ──
-        if (m.uniqueHit() != null) {
-            var u = m.uniqueHit();
-            sb.append("<div class='mom-item mom-unique'>")
-                .append("<div class='mom-icon'>🔥</div>")
-                .append("<div class='mom-body'>")
-                .append("<span class='mom-label'>EL ACIERTO DEL DÍA</span>")
-                .append("<span class='mom-name'>").append(escape(u.memberName())).append("</span>")
-                .append("<span class='mom-detail'>")
-                .append(flagOf(u.homeTeam())).append(" ").append(teamEs(u.homeTeam()))
-                .append(" ").append(u.homeGoals()).append("-").append(u.awayGoals())
-                .append(" ").append(flagOf(u.awayTeam())).append(" ").append(teamEs(u.awayTeam()))
-                .append(" — solo ").append(u.predictorsCount())
-                .append(" lo acert").append(u.predictorsCount() == 1 ? "ó" : "aron")
-                .append("</span>")
-                .append("</div></div>");
-        }
-
-        // ── Faller ──
-        if (m.faller() != null) {
-            sb.append("<div class='mom-item mom-faller'>")
-                .append("<div class='mom-icon'>📉</div>")
-                .append("<div class='mom-body'>")
-                .append("<span class='mom-label'>MÁS BAJA</span>")
-                .append("<span class='mom-name'>").append(escape(m.faller().memberName())).append("</span>")
-                .append("<span class='mom-detail'>-").append(m.faller().positionsFell())
-                .append(" puesto").append(m.faller().positionsFell() == 1 ? "" : "s")
-                .append(" · ").append(m.faller().roundPoints()).append(" pts</span>")
-                .append("</div></div>");
-        }
-
-        // ── Most exacts ──
-        if (m.mostExact() != null) {
-            sb.append("<div class='mom-item mom-exacts'>")
-                .append("<div class='mom-icon'>🎯</div>")
-                .append("<div class='mom-body'>")
-                .append("<span class='mom-label'>MÁS EXACTOS</span>")
-                .append("<span class='mom-name'>").append(escape(m.mostExact().memberName())).append("</span>")
-                .append("<span class='mom-detail'>").append(m.mostExact().exactCount())
-                .append(" resultado").append(m.mostExact().exactCount() == 1 ? "" : "s")
-                .append(" exacto").append(m.mostExact().exactCount() == 1 ? "" : "s")
-                .append(" en la ronda</span>")
-                .append("</div></div>");
-        }
-
-        sb.append("</div></div>");
-        return sb.toString();
     }
 
     private String knockoutCard(Group group, Match match, Member member, boolean isCreator) {
@@ -874,30 +777,15 @@ public class HtmlRenderer {
         if (!teamsKnown) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (finished) {
-            var methodBadge = "";
-            if (match.actualMethod() != null) {
-                var methodLabel = match.actualMethod().equals("PENALTIES") ? "PEN" :
-                    match.actualMethod().equals("EXTRA_TIME") ? "120'" : "90'";
-                methodBadge = " <span class='method-badge method-" + match.actualMethod().toLowerCase() + "'>" + methodLabel + "</span>";
-            }
-            scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span>" + methodBadge + "</div>";
+            scoreHtml = "<div class='match-score'><span class='score-home'>" + match.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.awayGoals() + "</span></div>";
         } else if (started && match.hasLiveScore()) {
             scoreHtml = "<div class='match-score live'><span class='score-home'>" + match.liveHomeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + match.liveAwayGoals() + "</span></div>";
         } else if (member == null) {
             scoreHtml = "<span class='idle-msg'>🔒</span>";
         } else if (started) {
-            var predMethodBadge = "";
-            if (memberPrediction != null) {
-                var predMethod = member.knockoutMethod(match.id());
-                if (predMethod != null) {
-                    var methodLabel = predMethod.equals("PENALTIES") ? "PEN" :
-                        predMethod.equals("EXTRA_TIME") ? "120'" : "90'";
-                    predMethodBadge = " <span class='method-badge method-" + predMethod.toLowerCase() + "'>" + methodLabel + "</span>";
-                }
-            }
             scoreHtml = memberPrediction == null
                 ? "<span class='idle-msg'>🔴</span>"
-                : "<span class='pred-display'><span class='score-home'>" + memberPrediction.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + memberPrediction.awayGoals() + "</span>" + predMethodBadge + "</span>";
+                : "<span class='pred-display'><span class='score-home'>" + memberPrediction.homeGoals() + "</span><span class='score-sep'>–</span><span class='score-away'>" + memberPrediction.awayGoals() + "</span></span>";
         }
         // Form mode: scoreHtml stays empty — form wraps the teams instead
 
@@ -924,28 +812,6 @@ public class HtmlRenderer {
             statusHtml = "<div class='match-status locked'>🔒</div>";
         } else if (finished) {
             var badgeHtml = predictionResultBadge(match, memberPrediction, false, group);
-            // Method bonus indicator for KO matches
-            if (match.actualMethod() != null) {
-                var methodLabel = switch (match.actualMethod()) {
-                    case "REGULAR" -> "90'";
-                    case "EXTRA_TIME" -> "120'";
-                    case "PENALTIES" -> "PEN";
-                    default -> match.actualMethod();
-                };
-                if (memberPrediction != null && member != null) {
-                    var memberMethod = member.knockoutMethod(match.id());
-                    if (memberMethod != null) {
-                        var methodHit = memberMethod.equals(match.actualMethod());
-                        var methodCls = methodHit ? "method-hit" : "method-miss";
-                        var title = methodHit ? "Acertaste el método" : "Fallaste el método (fue " + methodLabel + ")";
-                        badgeHtml += " <span class='method-result " + methodCls + "' title='" + title + "'>" + methodLabel + "</span>";
-                    } else {
-                        badgeHtml += " <span class='method-indicator'>" + methodLabel + "</span>";
-                    }
-                } else {
-                    badgeHtml += " <span class='method-indicator'>" + methodLabel + "</span>";
-                }
-            }
             statusHtml = "<div class='match-status'>" + badgeHtml + "</div>";
         } else if (started) {
             statusHtml = "<div class='match-status playing'><span class='live-dot'></span>EN VIVO</div>";
@@ -956,19 +822,10 @@ public class HtmlRenderer {
         if (isFormMode) {
             var confirmAttr = memberPrediction == null ? "" : " data-confirm=\"¿Actualizar tu pronóstico de " + homeFormVal + "–" + awayFormVal + " a otro resultado?\"";
             var btnLabel = memberPrediction == null ? "Pronosticar" : "Actualizar";
-            var predMethod = member == null ? null : member.knockoutMethod(match.id());
             matchTeamsHtml = "<form method='post' action='/groups/" + group.code() + "/prediction' class='score-form team-form'" + confirmAttr + ">"
                 + hiddenToken(member.token()) + "<input type='hidden' name='jornada' value='0'>"
                 + "<input type='hidden' name='matchId' value='" + match.id() + "'>"
                 + "<div class='match-teams'>" + homeHtml + "<span class='vs-badge'>vs</span>" + awayHtml + "</div>"
-                + "<div class='method-select'>"
-                + "<select name='method'>"
-                + "<option value=''>Método</option>"
-                + "<option value='REGULAR' " + ("REGULAR".equals(predMethod) ? "selected" : "") + ">Tiempo regular</option>"
-                + "<option value='EXTRA_TIME' " + ("EXTRA_TIME".equals(predMethod) ? "selected" : "") + ">Prórroga</option>"
-                + "<option value='PENALTIES' " + ("PENALTIES".equals(predMethod) ? "selected" : "") + ">Penaltis</option>"
-                + "</select>"
-                + "</div>"
                 + "<button type='submit' class='btn-predict'>" + btnLabel + "</button>"
                 + "</form>";
             matchActionsHtml = "<div class='match-actions'>" + statusHtml + "</div>";
@@ -1019,7 +876,6 @@ public class HtmlRenderer {
         var home = existing == null ? "" : String.valueOf(existing.homeGoals());
         var away = existing == null ? "" : String.valueOf(existing.awayGoals());
         var confirmAttr = existing == null ? "" : " data-confirm=\"¿Actualizar tu pronóstico de " + home + "–" + away + " a otro resultado?\"";
-        var predMethod = member == null ? null : member.knockoutMethod(match.id());
         return "<form method='post' action='/groups/" + group.code() + "/prediction' class='score-form'" + confirmAttr + ">"
             + "<input type='hidden' name='token' value='" + escape(member.token()) + "'>"
             + "<input type='hidden' name='jornada' value='0'>"
@@ -1028,14 +884,6 @@ public class HtmlRenderer {
             + "<input name='homeGoals' type='number' min='0' class='score-input' value='" + home + "' placeholder='0' required>"
             + "<span class='score-sep'>–</span>"
             + "<input name='awayGoals' type='number' min='0' class='score-input' value='" + away + "' placeholder='0' required>"
-            + "</div>"
-            + "<div class='method-select'>"
-            + "<select name='method'>"
-            + "<option value=''>Método</option>"
-            + "<option value='REGULAR' " + ("REGULAR".equals(predMethod) ? "selected" : "") + ">Tiempo regular</option>"
-            + "<option value='EXTRA_TIME' " + ("EXTRA_TIME".equals(predMethod) ? "selected" : "") + ">Prórroga</option>"
-            + "<option value='PENALTIES' " + ("PENALTIES".equals(predMethod) ? "selected" : "") + ">Penaltis</option>"
-            + "</select>"
             + "</div>"
             + "<button type='submit' class='btn-predict'>" + (existing == null ? "Pronosticar" : "Actualizar") + "</button>"
             + "</form>";
@@ -1677,22 +1525,6 @@ public class HtmlRenderer {
             + ".btn-admin{font-size:clamp(10px,.9vw,12px);padding:clamp(4px,.5vw,6px) clamp(8px,1vw,14px);border-radius:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);font-weight:600;cursor:pointer;font-family:var(--font);min-height:clamp(32px,3vw,38px);transition:all .2s ease}"
             + ".btn-admin:hover{background:var(--surface-hover);color:var(--text);border-color:var(--text-dim)}"
 
-            // Method selector dropdown (KO prediction form)
-            + ".method-select{width:100%;display:flex;justify-content:center}"
-            + ".method-select select{font-size:clamp(10px,.9vw,12px);padding:clamp(4px,.5vw,6px) clamp(6px,.7vw,10px);border-radius:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text-sec);font-weight:600;font-family:var(--font);cursor:pointer;outline:none;transition:all .2s ease;min-height:clamp(28px,3vw,34px)}"
-            + ".method-select select:hover,.method-select select:focus{border-color:var(--pri);color:var(--text)}"
-            // Method badge on scores (90', 120', PEN)
-            + ".method-badge{display:inline-flex;font-size:clamp(8px,.7vw,10px);font-weight:700;padding:1px clamp(3px,.4vw,5px);border-radius:3px;vertical-align:super;line-height:1.3;margin-left:1px}"
-            + ".method-regular{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3)}"
-            + ".method-extra_time{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)}"
-            + ".method-penalties{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3)}"
-            // Method result indicator in status badge
-            + ".method-result{font-size:clamp(9px,.8vw,11px);font-weight:700;font-family:var(--font-mono);cursor:help;margin-left:3px}"
-            + ".method-hit{color:var(--green)}"
-            + ".method-miss{color:var(--red);opacity:.7}"
-            + ".method-indicator{font-size:clamp(8px,.7vw,10px);font-weight:600;padding:1px 3px;border-radius:3px;background:var(--surface2);color:var(--text-dim);margin-left:3px;border:1px solid var(--border)}"
-            + ".pred-method{font-size:clamp(9px,.8vw,11px);font-weight:600;color:var(--text-dim);background:var(--surface-alt);padding:1px 4px;border-radius:3px;font-family:var(--font-mono)}"
-
             // Live indicator pulse
             + "@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}"
             + "@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}"
@@ -1770,38 +1602,6 @@ public class HtmlRenderer {
             //  SETTINGS
             // ═══════════════════════════════════════
             + ".settings-layout{max-width:min(560px,100%);margin:0 auto}"
-
-            // ═══════════════════════════════════════
-            //  MOMENTUM CARD — round highlights
-            // ═══════════════════════════════════════
-            + ".momentum-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:clamp(16px,2vw,24px);box-shadow:var(--shadow-sm)}"
-            + ".mom-header{display:flex;align-items:center;gap:clamp(8px,1vw,14px);padding:clamp(10px,1vw,14px) clamp(14px,1.6vw,20px);background:var(--gradient);color:#fff;flex-wrap:wrap}"
-            + ".mom-badge{font-size:clamp(11px,1vw,13px);font-weight:800;text-transform:uppercase;letter-spacing:.08em;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:4px}"
-            + ".mom-round{font-size:clamp(13px,1.2vw,16px);font-weight:700;opacity:.9}"
-            + ".mom-status{margin-left:auto;font-size:clamp(11px,1vw,13px);font-weight:600;display:flex;align-items:center;gap:4px}"
-            + ".mom-live{opacity:.85}"
-            + ".mom-done{opacity:.85}"
-            + ".mom-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}"
-            + "@media(max-width:599px){.mom-grid{grid-template-columns:1fr}}"
-            + ".mom-item{display:flex;align-items:flex-start;gap:clamp(10px,1vw,14px);padding:clamp(12px,1.2vw,18px) clamp(14px,1.6vw,20px);border-bottom:1px solid var(--border)}"
-            + ".mom-item:nth-child(even){border-left:1px solid var(--border)}"
-            + "@media(max-width:599px){.mom-item:nth-child(even){border-left:none}}"
-            + ".mom-item .mom-icon{font-size:clamp(22px,2.2vw,28px);line-height:1;flex-shrink:0;margin-top:2px}"
-            + ".mom-item .mom-body{display:flex;flex-direction:column;gap:2px;min-width:0}"
-            + ".mom-item .mom-label{font-size:clamp(9px,.8vw,10px);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim)}"
-            + ".mom-item .mom-name{font-size:clamp(15px,1.3vw,17px);font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-            + ".mom-item .mom-detail{font-size:clamp(12px,1vw,13px);color:var(--text-sec);line-height:1.4}"
-            // Last item in each column has no bottom border
-            + ".mom-grid .mom-item:last-child,.mom-grid .mom-item:nth-last-child(2):nth-child(even){border-bottom:none}"
-            // Mobile: respect order, last item no border
-            + "@media(max-width:599px){.mom-grid .mom-item:last-child{border-bottom:none}.mom-grid .mom-item:nth-last-child(2):nth-child(even){border-bottom:1px solid var(--border)}}"
-            // Remove bottom border if only 2 items (fills 1 row)
-            + ".mom-grid .mom-item:nth-last-child(2):first-child{border-bottom:none}"
-            // Color accents for each type
-            + ".mom-climber .mom-icon,.mom-climber .mom-name{color:var(--green)}"
-            + ".mom-faller .mom-icon,.mom-faller .mom-name{color:var(--red)}"
-            + ".mom-unique .mom-icon,.mom-unique .mom-name{color:#f59e0b}"
-            + ".mom-exacts .mom-icon,.mom-exacts .mom-name{color:var(--pri)}"
 
             // ═══════════════════════════════════════
             //  KNOCKOUT BRACKET — premium dark

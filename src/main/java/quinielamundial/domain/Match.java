@@ -28,14 +28,6 @@ public class Match implements Serializable {
     private Integer awayGoals;
     private boolean finished;
 
-    /**
-     * How this knockout match was actually decided: "REGULAR", "EXTRA_TIME",
-     * or "PENALTIES". Null until the match finishes + method is determined.
-     * Auto-set on finish via {@link #finish(int, int)}: draw → PENALTIES,
-     * otherwise REGULAR. Admin can override.
-     */
-    private String actualMethod;
-
     /** Live (in-progress) scores — NOT persisted, re-fetched from API on restart. */
     private transient boolean hasLiveScore;
     private transient int liveHomeGoals;
@@ -93,7 +85,6 @@ public class Match implements Serializable {
         this.homeGoals = null;
         this.awayGoals = null;
         this.hasLiveScore = false;
-        this.actualMethod = null;
     }
 
     public void finish(int homeGoals, int awayGoals) {
@@ -101,19 +92,7 @@ public class Match implements Serializable {
             throw new IllegalStateException("No se puede finalizar un partido KO sin equipos asignados.");
         this.homeGoals = homeGoals; this.awayGoals = awayGoals; this.finished = true;
         this.hasLiveScore = false; // live score is superseded by final result
-        // Auto-detect method for knockout matches
-        if (round >= ROUND_R32) {
-            this.actualMethod = homeGoals == awayGoals ? "PENALTIES" : "REGULAR";
-        }
     }
-
-    /** Override the actual method for a finished KO match (admin correction). */
-    public void setActualMethod(String method) {
-        this.actualMethod = method;
-    }
-
-    /** How this KO match was decided, or null if not finished / not a KO match. */
-    public String actualMethod() { return actualMethod; }
 
     /** Winning team name, or null if not finished / draw (KO can't end in draw). */
     public String winner() {

@@ -295,12 +295,7 @@ public class QuinielaApp {
                     var form = FormData.read(exchange);
                     var token = form.required("token");
                     var matchId = Integer.parseInt(form.required("matchId"));
-                    var m = group.matchById(matchId);
-                    String predMethod = null;
-                    if (m.knockout()) {
-                        predMethod = form.value("method", null);
-                    }
-                    group.submitPrediction(token, matchId, Integer.parseInt(form.required("homeGoals")), Integer.parseInt(form.required("awayGoals")), predMethod);
+                    group.submitPrediction(token, matchId, Integer.parseInt(form.required("homeGoals")), Integer.parseInt(form.required("awayGoals")));
                     var j = form.value("jornada", "1");
                     if (isAjaxRequest(exchange)) { ajaxGroupPageResponse(exchange, group, token, j, "Pronóstico guardado"); return; }
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Pron%C3%B3stico+guardado");
