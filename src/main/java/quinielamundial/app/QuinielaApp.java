@@ -47,12 +47,12 @@ public class QuinielaApp {
         for (var group : service.groups()) {
             attachPersistence(group);
             scoreStreams.put(group.code(), new ScoreStream());
+            // Resolve bracket on startup — with the immediate first poll, any
+            // stale-state inaccuracies will be corrected within ~300ms. Without
+            // this, KO matches stay unresolved forever when no group-stage
+            // results change (all matches already finished in saved state).
+            BracketResolver.resolveBracket(group);
         }
-        // Brackets are resolved by the MatchUpdateService callback after API sync.
-        // DO NOT resolve here — the saved state may be stale (e.g. old serialized
-        // data from June 25), and resolving with incomplete standings would produce
-        // wrong R32 pairings. The API poll will bring in current results and the
-        // callback will re-resolve brackets with complete data.
         var updater = new MatchUpdateService(service.groups().stream().toList(),
             // Final result callback — resolve brackets, persist, broadcast
             updatedGroups -> {
