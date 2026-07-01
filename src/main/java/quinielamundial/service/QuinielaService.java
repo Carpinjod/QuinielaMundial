@@ -69,7 +69,8 @@ public class QuinielaService {
      * Call after any group-stage result changes to populate R32 teams.
      */
     public void resolveBracket(Group group) {
-        BracketResolver.resolveBracket(group);
+        var allGroups = List.copyOf(groups.values());
+        BracketResolver.resolveBracket(group, allGroups);
     }
 
     /**
@@ -84,8 +85,9 @@ public class QuinielaService {
      * Resolve bracket for ALL groups. Called on app startup.
      */
     public void resolveAllBrackets() {
-        for (var group : groups.values()) {
-            BracketResolver.resolveBracket(group);
+        var allGroups = List.copyOf(groups.values());
+        for (var group : allGroups) {
+            BracketResolver.resolveBracket(group, allGroups);
         }
     }
 }

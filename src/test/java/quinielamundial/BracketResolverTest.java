@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import quinielamundial.service.BracketResolver;
 import quinielamundial.service.QuinielaService;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -41,7 +43,7 @@ class BracketResolverTest {
             1, 0    // M6: SA beats SK
         );
 
-        var standings = BracketResolver.calculateAllStandings(group);
+        var standings = BracketResolver.calculateAllStandings(List.of(group));
         var groupA = standings.get("A");
 
         assertNotNull(groupA);
@@ -72,7 +74,7 @@ class BracketResolverTest {
             0, 0    // M6: SA 0-0 SK
         );
 
-        var standings = BracketResolver.calculateAllStandings(group);
+        var standings = BracketResolver.calculateAllStandings(List.of(group));
         var groupA = standings.get("A");
 
         assertNotNull(groupA);
@@ -116,7 +118,7 @@ class BracketResolverTest {
             2, 1    // M6: SA 2-1 SK
         );
 
-        var standings = BracketResolver.calculateAllStandings(group);
+        var standings = BracketResolver.calculateAllStandings(List.of(group));
         var groupA = standings.get("A");
 
         assertNotNull(groupA);
@@ -147,7 +149,7 @@ class BracketResolverTest {
         group.registerResult(55, 3, 0);  // Argentina 3-0 Algeria
         group.registerResult(56, 3, 1);  // Austria 3-1 Jordan
 
-        var standings = BracketResolver.calculateAllStandings(group);
+        var standings = BracketResolver.calculateAllStandings(List.of(group));
         var groupJ = standings.get("J");
 
         assertNotNull(groupJ);

@@ -51,13 +51,15 @@ public class QuinielaApp {
             // stale-state inaccuracies will be corrected within ~300ms. Without
             // this, KO matches stay unresolved forever when no group-stage
             // results change (all matches already finished in saved state).
-            BracketResolver.resolveBracket(group);
+            // Pass ALL groups so standings across the entire World Cup are correct.
+            BracketResolver.resolveBracket(group, List.copyOf(service.groups()));
         }
         var updater = new MatchUpdateService(service.groups().stream().toList(),
             // Final result callback — resolve brackets, persist, broadcast
             updatedGroups -> {
-                for (var g : service.groups()) {
-                    BracketResolver.resolveBracket(g);
+                var all = List.copyOf(service.groups());
+                for (var g : all) {
+                    BracketResolver.resolveBracket(g, all);
                 }
                 store.save(service.groups(), service.tournamentChampion());
                 broadcastLiveScores(updatedGroups);

@@ -2,6 +2,7 @@ package quinielamundial.service;
 
 import quinielamundial.domain.Group;
 import quinielamundial.domain.Match;
+import quinielamundial.logging.Logger;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -38,20 +39,61 @@ public class BracketResolver {
     /** Team standings within a single World Cup group. */
     public record Standing(String team, int points, int goalDiff, int goalsFor) {}
 
+    private static final Logger LOG = new Logger("BracketResolver");
+
     /**
      * FULL bracket resolution: recalculate standings and populate all KNOWN
      * matches. Should be called after any group-stage result changes.
+     *
+     * @param group     the group (of friends) whose KO matches to resolve
+     * @param allGroups ALL groups (each has a copy of all 72 group-stage
+     *                  matches); standings are computed from ALL of them so
+     *                  that every World Cup group's results are included
+     *                  even if some groups haven't been polled yet.
      */
-    public static void resolveBracket(Group group) {
-        var standings = calculateAllStandings(group);
+    public static void resolveBracket(Group group, List<Group> allGroups) {
+        var standings = calculateAllStandings(allGroups);
         var advancingThirds = bestThirdPlaced(standings);
         var koMatches = group.knockoutMatches();
         var bracketSources = WorldCupSchedule.bracketSources();
+
+        // ── Debug: log advancing thirds and M79 resolution ──
+        {
+            var sb = new StringBuilder("Advancing 3rds: ");
+            for (var t : advancingThirds) sb.append(t).append(" ");
+            LOG.info(sb.toString());
+            // Log EVERY 3rd place team with their points/GD/GF
+            var dbg = new StringBuilder("All 3rds: ");
+            for (var entry : standings.entrySet()) {
+                var list = entry.getValue();
+                if (list.size() >= 3) {
+                    var s = list.get(2);
+                    dbg.append(entry.getKey()).append(":").append(s.team())
+                       .append("(").append(s.points()).append("p,")
+                       .append(s.goalDiff()).append("gd,").append(s.goalsFor()).append("gf) ");
+                } else {
+                    dbg.append(entry.getKey()).append(":<3teams ");
+                }
+            }
+            LOG.info(dbg.toString());
+            var m79Src = bracketSources.get(79);
+            if (m79Src != null) {
+                LOG.info("M79 sources: {} vs {}", m79Src[0], m79Src[1]);
+            }
+        }
 
         // Pre-compute 3rd-place assignments for R32 so the same team is NOT
         // assigned to multiple matches (the old findFirst() approach was buggy
         // when candidate-group lists overlapped).
         var thirdAssignment = assignThirdPlacedMatches(standings, advancingThirds, bracketSources);
+
+        // ── Debug: log what M79 gets ──
+        var m79Team = thirdAssignment.get(79);
+        if (m79Team != null) {
+            LOG.info("M79 3rd-place assigned: " + m79Team);
+        } else {
+            LOG.info("M79 3rd-place NOT ASSIGNED (unresolved)");
+        }
 
         for (var match : koMatches) {
             if (match.finished()) continue;
@@ -183,10 +225,32 @@ public class BracketResolver {
     //  STANDINGS CALCULATION
     // ═══════════════════════════════════════════
 
-    public static Map<String, List<Standing>> calculateAllStandings(Group group) {
+    /**
+     * Computes standings for all 12 World Cup groups (A–L) by collecting
+     * matches from ALL Group objects (each group of friends has a copy of
+     * all 72 group-stage matches).  This ensures we have every World Cup
+     * group's results, even if some groups' matches haven't been polled yet.
+     *
+     * @param allGroups all groups of friends (each has the full 72-match list)
+     * @return group code → ranked list of {@link Standing}
+     */
+    public static Map<String, List<Standing>> calculateAllStandings(List<Group> allGroups) {
+        // Collect every match from every group into a single list.
+        var combined = new ArrayList<Match>();
+        for (var g : allGroups) {
+            for (var m : g.matches()) {
+                // Deduplicate by match ID (groups share copy-constructed matches)
+                if (combined.stream().noneMatch(x -> x.id() == m.id())) {
+                    combined.add(m);
+                }
+            }
+        }
+        // Wrap in a synthetic group so calculateGroupStandings can iterate it
+        var synthetic = new Group("__all__", "__all__", combined);
+
         var result = new LinkedHashMap<String, List<Standing>>();
         for (var entry : GROUP_TEAMS.entrySet()) {
-            result.put(entry.getKey(), calculateGroupStandings(group, entry.getValue()));
+            result.put(entry.getKey(), calculateGroupStandings(synthetic, entry.getValue()));
         }
         return result;
     }
@@ -331,9 +395,10 @@ public class BracketResolver {
         return standings.values().stream()
             .map(s -> s.size() >= 3 ? s.get(2) : null)
             .filter(Objects::nonNull)
-            .sorted(Comparator.<Standing, Integer>comparing(Standing::points).reversed()
-                .thenComparingInt(Standing::goalDiff).reversed()
-                .thenComparingInt(Standing::goalsFor).reversed())
+            .sorted(Comparator.<Standing>comparingInt(Standing::points)
+                .thenComparingInt(Standing::goalDiff)
+                .thenComparingInt(Standing::goalsFor)
+                .reversed())
             .limit(8)
             .map(Standing::team)
             .collect(Collectors.toCollection(LinkedHashSet::new));
