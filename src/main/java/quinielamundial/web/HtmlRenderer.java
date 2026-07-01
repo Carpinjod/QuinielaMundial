@@ -1154,7 +1154,9 @@ public class HtmlRenderer {
                 .filter(m -> {
                     var p = m.predictions().get(match.id());
                     if (p == null || actual == null) return false;
-                    return group.score(m, "").totalPoints() > 0; // simplified check
+                    // Direct comparison: exact score OR correct outcome for THIS match only
+                    return (p.homeGoals() == match.homeGoals() && p.awayGoals() == match.awayGoals())
+                        || p.outcome().equals(actual);
                 })
                 .count();
             if (total > 0) {
