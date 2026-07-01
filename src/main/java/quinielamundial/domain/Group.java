@@ -97,19 +97,8 @@ public class Group implements Serializable {
             throw new IllegalStateException("No se puede pronosticar un partido sin equipos asignados.");
         var star = !match.knockout() && member.starByJornada().getOrDefault(match.jornada(), -1) == matchId;
         member.predictions().put(matchId, new Prediction(homeGoals, awayGoals, star));
-
-        // Advancing pick for knockout matches
-        if (match.knockout()) {
-            if (advancing == null) {
-                if (homeGoals == awayGoals)
-                    throw new IllegalArgumentException("Debes indicar qué equipo avanza en caso de empate.");
-                advancing = homeGoals > awayGoals ? 1 : 2; // auto-set from winner
-            }
-            if (advancing != 1 && advancing != 2)
-                throw new IllegalArgumentException("El valor de avance debe ser 1 (local) o 2 (visitante).");
-            member.advancingPicks().put(matchId, advancing);
-        }
-
+        // Note: advancing parameter is accepted for backward compatibility
+        // with old form submissions, but is no longer used for scoring.
         changed();
     }
 
@@ -216,35 +205,10 @@ public class Group implements Serializable {
         return new ScoreBreakdown(total, exactHits, outcomeHits, championHit);
     }
 
+    /** Score a single match prediction: 3pts for exact score, 1pt for correct outcome.
+     *  Same rules apply to group-stage AND knockout matches (no more advancing picker). */
     private int scoreMatch(Match match, Prediction prediction, Member member) {
         if (!match.finished()) return 0;
-
-        if (match.knockout()) {
-            // Knockout matches: 3pts for exact score + correct advancing, 1pt for correct advancing only.
-            var actualWinner = match.winner();
-            if (actualWinner == null) return 0;
-            var advancingPick = member.advancingPicks().get(match.id());
-
-            // Fallback for old predictions (before advancing pick existed): use old scoring
-            if (advancingPick == null) {
-                if (prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals()) return 3;
-                var actual = match.result();
-                if (actual != null && prediction.outcome().equals(actual)) return 1;
-                return 0;
-            }
-
-            var pickedTeam = advancingPick == 1 ? match.home() : match.away();
-            var advancingCorrect = pickedTeam != null && pickedTeam.equals(actualWinner);
-
-            if (advancingCorrect && prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals()) {
-                return 3;
-            } else if (advancingCorrect) {
-                return 1;
-            }
-            return 0;
-        }
-
-        // Group matches: 3pts for exact score, 1pt for correct outcome
         if (prediction.homeGoals() == match.homeGoals() && prediction.awayGoals() == match.awayGoals()) return 3;
         var actual = match.result();
         if (actual != null && prediction.outcome().equals(actual)) return 1;

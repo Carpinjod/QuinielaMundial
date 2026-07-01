@@ -48,9 +48,11 @@ public class QuinielaApp {
             attachPersistence(group);
             scoreStreams.put(group.code(), new ScoreStream());
         }
-        // Resolve knockout brackets for all groups (populates R32 from current standings)
-        service.resolveAllBrackets();
-        store.save(service.groups(), service.tournamentChampion());
+        // Brackets are resolved by the MatchUpdateService callback after API sync.
+        // DO NOT resolve here — the saved state may be stale (e.g. old serialized
+        // data from June 25), and resolving with incomplete standings would produce
+        // wrong R32 pairings. The API poll will bring in current results and the
+        // callback will re-resolve brackets with complete data.
         var updater = new MatchUpdateService(service.groups().stream().toList(),
             // Final result callback — resolve brackets, persist, broadcast
             updatedGroups -> {
@@ -295,9 +297,7 @@ public class QuinielaApp {
                     var form = FormData.read(exchange);
                     var token = form.required("token");
                     var matchId = Integer.parseInt(form.required("matchId"));
-                    var advancingStr = form.value("advancing", null);
-                    var advancing = advancingStr == null ? null : Integer.valueOf(advancingStr);
-                    group.submitPrediction(token, matchId, Integer.parseInt(form.required("homeGoals")), Integer.parseInt(form.required("awayGoals")), advancing);
+                    group.submitPrediction(token, matchId, Integer.parseInt(form.required("homeGoals")), Integer.parseInt(form.required("awayGoals")));
                     var j = form.value("jornada", "1");
                     if (isAjaxRequest(exchange)) { ajaxGroupPageResponse(exchange, group, token, j, "Pronóstico guardado"); return; }
                     redirect(exchange, "/groups/" + group.code() + "?token=" + token + "&jornada=" + j + "&success=Pron%C3%B3stico+guardado");

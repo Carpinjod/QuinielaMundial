@@ -97,7 +97,11 @@ public class MatchUpdateService {
 
     public void start() {
         LOG.info("Polling {} every {}s", API_URL, POLL_INTERVAL_SECONDS);
-        scheduler.scheduleAtFixedRate(this::poll, 10, POLL_INTERVAL_SECONDS, TimeUnit.SECONDS);
+        // Initial poll immediately — avoids waiting 10s for first API data.
+        // This is critical on startup: bracket resolution depends on current
+        // standings, and the saved state may be stale.
+        scheduler.execute(this::poll);
+        scheduler.scheduleAtFixedRate(this::poll, POLL_INTERVAL_SECONDS, POLL_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
     public void stop() {

@@ -206,13 +206,13 @@ class QuinielaCSSFrameworkTest {
     }
 
     @Test
-    void advancingPickerStylesPresent() {
+    void advancingPickerStylesRemoved() {
         var css = cssBlock();
-        assertAll("Advancing picker styles",
-            () -> assertTrue(css.contains(".advancing-picker{"), ".advancing-picker"),
-            () -> assertTrue(css.contains(".adv-label{"), ".adv-label"),
-            () -> assertTrue(css.contains(".adv-options{"), ".adv-options"),
-            () -> assertTrue(css.contains(".adv-option{"), ".adv-option")
+        assertAll("Advancing picker styles must be gone",
+            () -> assertFalse(css.contains(".advancing-picker{"), ".advancing-picker must be removed"),
+            () -> assertFalse(css.contains(".adv-label{"), ".adv-label must be removed"),
+            () -> assertFalse(css.contains(".adv-options{"), ".adv-options must be removed"),
+            () -> assertFalse(css.contains(".adv-option{"), ".adv-option must be removed")
         );
     }
 

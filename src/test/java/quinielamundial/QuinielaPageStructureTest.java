@@ -441,7 +441,7 @@ class QuinielaPageStructureTest {
     }
 
     @Test
-    void knockoutCardShowsAdvancingPickerForMember() {
+    void knockoutCardOmitsAdvancingPicker() {
         var group = service.createGroup("Test", "Ana");
         TestUtils.setFutureKickoffs(group);
         var ana = group.creator();
@@ -452,17 +452,11 @@ class QuinielaPageStructureTest {
         // Render knockout view (jornada=0)
         var html = renderer.groupPage(group, ana, service.candidates(), null, false, 0, null);
 
-        assertAll("Advancing picker in knockout form",
-            () -> assertTrue(html.contains("class='advancing-picker'"),
-                "Advancing picker container"),
-            () -> assertTrue(html.contains("class='adv-label'"),
-                "Picker label: ¿Quién avanza?"),
-            () -> assertTrue(html.contains("class='adv-options'"),
-                "Advancing options container"),
-            () -> assertTrue(html.contains("class='adv-option'"),
-                "Advancing option button"),
-            () -> assertTrue(html.contains("name='advancing'"),
-                "Advancing radio input name")
+        assertAll("No advancing picker in knockout form (removed)",
+            () -> assertFalse(html.contains("advancing-picker"),
+                "Advancing picker container must not exist"),
+            () -> assertFalse(html.contains("name='advancing'"),
+                "Advancing radio input must not exist")
         );
     }
 
