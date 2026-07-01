@@ -128,6 +128,7 @@ public class MatchUpdateService {
             var finalGroups = new ArrayList<Group>();
             var liveGroups = new ArrayList<Group>();
 
+            // PASS 1: group-stage matches + any already-known KO matches
             for (var group : groups) {
                 var result = updateGroup(group, apiMatches);
                 if (result.finalCount > 0) finalGroups.add(group);
@@ -136,11 +137,28 @@ public class MatchUpdateService {
 
             if (!finalGroups.isEmpty()) {
                 onScoresUpdated.accept(finalGroups);
-                LOG.info("Final results: {} groups updated", finalGroups.size());
+                LOG.info("Group final results: {} groups updated", finalGroups.size());
             }
             if (!liveGroups.isEmpty()) {
                 onLiveScoresUpdated.accept(liveGroups);
                 LOG.info("Live scores: {} groups updated", liveGroups.size());
+            }
+
+            // PASS 2: KO matches whose brackets were just resolved by the callback.
+            // Without this pass, KO results only appear on the NEXT poll (15s later),
+            // forcing users to wait for points on resolved KO matches.
+            var koFinal = new ArrayList<Group>();
+            for (var group : groups) {
+                var result = updateKnockoutMatches(group, apiMatches);
+                if (result.finalCount > 0) koFinal.add(group);
+                if (result.liveCount > 0 && !liveGroups.contains(group)) liveGroups.add(group);
+            }
+            if (!koFinal.isEmpty()) {
+                onScoresUpdated.accept(koFinal);
+                LOG.info("KO final results: {} groups updated", koFinal.size());
+            }
+            if (!liveGroups.isEmpty()) {
+                onLiveScoresUpdated.accept(liveGroups);
             }
         } catch (Exception e) {
             LOG.error("Poll failed: {}", e.getMessage());
@@ -229,6 +247,20 @@ public class MatchUpdateService {
         // Process knockout matches (live scores + auto-results)
         for (var match : group.knockoutMatches()) {
             if (!match.teamsKnown()) continue; // skip unresolved bracket slots
+            var result = updateMatch(match, group, apiMatches);
+            finalCount += result.finalCount();
+            liveCount += result.liveCount();
+        }
+        return new UpdateResult(finalCount, liveCount);
+    }
+
+    /** Process only knockout matches of a group (the current updateGroup also does this,
+     *  but we need a separate pass AFTER bracket resolution to avoid the 15s delay). */
+    private UpdateResult updateKnockoutMatches(Group group, Map<String, ApiMatch> apiMatches) {
+        var finalCount = 0;
+        var liveCount = 0;
+        for (var match : group.knockoutMatches()) {
+            if (!match.teamsKnown()) continue;
             var result = updateMatch(match, group, apiMatches);
             finalCount += result.finalCount();
             liveCount += result.liveCount();
