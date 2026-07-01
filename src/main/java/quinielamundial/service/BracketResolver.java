@@ -82,10 +82,10 @@ public class BracketResolver {
             }
         }
 
-        // Pre-compute 3rd-place assignments for R32 so the same team is NOT
-        // assigned to multiple matches (the old findFirst() approach was buggy
-        // when candidate-group lists overlapped).
-        var thirdAssignment = assignThirdPlacedMatches(standings, advancingThirds, bracketSources);
+        // Pre-compute 3rd-place assignments for R32 per the OFFICIAL FIFA 2026
+        // pairing table: the 8 best third-placed teams are ranked by
+        // points → GD → GF, then assigned to specific matches by rank position.
+        var thirdAssignment = assignThirdPlacedMatches(standings, advancingThirds);
 
         // ── Debug: log what M79 gets ──
         var m79Team = thirdAssignment.get(79);
@@ -405,81 +405,38 @@ public class BracketResolver {
     }
 
     // ═══════════════════════════════════════════
-    //  THIRD-PLACE ASSIGNMENT (constraint-satisfaction)
+    //  THIRD-PLACE ASSIGNMENT (FIFA 2026 pairing table)
     // ═══════════════════════════════════════════
 
     /**
-     * Pre-compute a map of R32 match ID → third-place team, ensuring each
-     * advancing third-place team is assigned to exactly one match.
+     * FIFA 2026 3rd-place pairing table.
      *
-     * Uses backtracking (constraint satisfaction) since FIFA pre-maps 495
-     * possible combinations — a simple "first match" approach fails when
-     * candidate-group lists overlap.
+     * The 8 best third-placed teams are RANKED by points → GD → GF (best first).
+     * Each rank position is pre-assigned to a specific R32 match — NOT by
+     * backtracking or eligibility.
+     *
+     * Index = rank (0 = best, 7 = worst), value = R32 match ID.
+     */
+    private static final int[] THIRD_RANK_TO_MATCH = {80, 77, 79, 87, 81, 85, 74, 82};
+
+    /**
+     * Assigns advancing 3rd-place teams to R32 matches per the OFFICIAL FIFA 2026
+     * pairing table. The 8 best third-placed teams are ranked (points → GD → GF),
+     * then assigned by rank position — NOT by backtracking or group eligibility.
      */
     private static Map<Integer, String> assignThirdPlacedMatches(
             Map<String, List<Standing>> standings,
-            Set<String> advancingThirds,
-            Map<Integer, String[]> bracketSources) {
+            Set<String> advancingThirds) {
         if (advancingThirds == null || advancingThirds.isEmpty()) return Map.of();
 
-        // Find R32 match IDs that have a 3rd-place source and determine
-        // which advancing teams are eligible for each.
-        var eligible = new LinkedHashMap<Integer, List<String>>();
-        for (var entry : bracketSources.entrySet()) {
-            int matchId = entry.getKey();
-            if (matchId < 73 || matchId > 88) continue;
-            String[] sources = entry.getValue();
-            for (String src : sources) {
-                if (src.startsWith("3rd(")) {
-                    var candidates = parseCandidateGroups(src);
-                    var matched = advancingThirds.stream()
-                        .filter(t -> {
-                            var g = groupForTeam(t, standings);
-                            return g != null && candidates.contains(g);
-                        })
-                        .collect(Collectors.toList());
-                    eligible.put(matchId, matched);
-                    break;
-                }
-            }
-        }
-
-        // Backtracking: try to assign each match a unique advancing third
-        var matchIds = List.copyOf(eligible.keySet());
-        var used = new HashSet<String>();
+        // advancingThirds is a LinkedHashSet in strict ranking order (best first)
         var assignment = new LinkedHashMap<Integer, String>();
-
-        if (backtrackAssign(matchIds, 0, eligible, used, assignment)) {
-            return assignment;
+        int rank = 0;
+        for (var team : advancingThirds) {
+            if (rank >= THIRD_RANK_TO_MATCH.length) break;
+            assignment.put(THIRD_RANK_TO_MATCH[rank], team);
+            rank++;
         }
-        return Map.of(); // fallback — should not happen with valid standings
-    }
-
-    /** Parse "3rd(A,B,C,D,F)" → ["A","B","C","D","F"]. */
-    private static List<String> parseCandidateGroups(String source) {
-        var inner = source.substring(4, source.length() - 1);
-        return Arrays.asList(inner.split(","));
-    }
-
-    /** Recursive backtracking for third-place assignment. */
-    private static boolean backtrackAssign(
-            List<Integer> matchIds,
-            int idx,
-            Map<Integer, List<String>> eligible,
-            HashSet<String> used,
-            Map<Integer, String> assignment) {
-        if (idx == matchIds.size()) return true;
-        int matchId = matchIds.get(idx);
-        for (String team : eligible.getOrDefault(matchId, List.of())) {
-            if (used.contains(team)) continue;
-            used.add(team);
-            assignment.put(matchId, team);
-            if (backtrackAssign(matchIds, idx + 1, eligible, used, assignment)) {
-                return true;
-            }
-            used.remove(team);
-            assignment.remove(matchId);
-        }
-        return false;
+        return assignment;
     }
 }
